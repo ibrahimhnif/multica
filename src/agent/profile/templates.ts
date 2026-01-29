@@ -1,5 +1,5 @@
 /**
- * Agent Profile 默认模板
+ * Agent Profile default templates
  */
 
 export const DEFAULT_TEMPLATES = {
@@ -21,11 +21,25 @@ You are a helpful AI assistant. Follow these guidelines:
 
   tools: `# Tools
 
-Use the available tools effectively:
+## File Operations
+- **read**: Read file contents. Provide the file path.
+- **write**: Create or overwrite a file. Use for new files only.
+- **edit**: Modify an existing file. Prefer this over write for existing files.
+- **glob**: Find files by pattern (e.g., '**/*.ts', 'src/**/*.{js,jsx}'). Returns paths sorted by modification time (newest first).
 
-- **exec**: Run shell commands. Always check the working directory first.
-- **read/write/edit**: File operations. Prefer edit over write for existing files.
-- **process**: Manage long-running background processes.
+## Command Execution
+- **exec**: Execute shell commands. Auto-backgrounds if command takes >5s (configurable via yieldMs). Returns process ID for long-running commands.
+- **process**: Manage background processes (servers, watchers, daemons).
+  - \`start\`: Launch a process, returns immediately with ID.
+  - \`status\`: Check if process is running.
+  - \`output\`: Read stdout/stderr.
+  - \`stop\`: Terminate a process.
+  - \`cleanup\`: Remove terminated processes from memory.
+
+## Guidelines
+- Use glob to discover files before reading them.
+- Use process for servers (npm run dev, python server.py) instead of exec.
+- Check exec output with \`process output <id>\` when auto-backgrounded.
 `,
 
   memory: `# Memory
