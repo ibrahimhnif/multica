@@ -60,15 +60,6 @@ export function Chat() {
     setTimeout(() => setDeviceCopied(false), 2000)
   }, [deviceId])
 
-  const [agentCopied, setAgentCopied] = useState(false)
-  const handleCopyAgent = useCallback(async () => {
-    if (!activeAgentId) return
-    await navigator.clipboard.writeText(activeAgentId)
-    setAgentCopied(true)
-    toast.success("Agent ID copied")
-    setTimeout(() => setAgentCopied(false), 2000)
-  }, [activeAgentId])
-
   const mainRef = useRef<HTMLElement>(null)
   const fadeStyle = useScrollFade(mainRef)
 
@@ -99,23 +90,9 @@ export function Chat() {
           {gwState}
         </Badge>
         {activeAgentId && (
-          <>
-            <span className="text-xs text-muted-foreground font-mono">
-              Agent: {activeAgentId.slice(0, 8)}...
-            </span>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={handleCopyAgent}
-              aria-label="Copy agent ID"
-            >
-              <HugeiconsIcon
-                icon={agentCopied ? CheckmarkCircle02Icon : Copy01Icon}
-                strokeWidth={2}
-                className={cn("size-3", agentCopied && "text-green-500")}
-              />
-            </Button>
-          </>
+          <span className="text-xs text-muted-foreground font-mono">
+            Agent: {activeAgentId.slice(0, 8)}...
+          </span>
         )}
       </header>
 
