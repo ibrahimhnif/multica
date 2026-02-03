@@ -21,7 +21,11 @@ import { useScrollFade } from "@multica/ui/hooks/use-scroll-fade";
 import { useAutoScroll } from "@multica/ui/hooks/use-auto-scroll";
 import { cn } from "@multica/ui/lib/utils";
 
-export function Chat() {
+interface ChatProps {
+  showHeader?: boolean;
+}
+
+export function Chat({ showHeader = true }: ChatProps) {
   useHubInit()
   const deviceId = useDeviceId()
   const activeAgentId = useHubStore((s) => s.activeAgentId)
@@ -67,30 +71,32 @@ export function Chat() {
   useAutoScroll(mainRef)
 
   return (
-    <div className="h-dvh flex flex-col overflow-hidden w-full">
+    <div className="h-full flex flex-col overflow-hidden w-full">
       {/* Header */}
-      <header>
-        <div className="flex items-center justify-between px-4 py-2 max-w-4xl mx-auto">
-          <div className="flex items-center gap-2.5">
-            <img src="/icon.png" alt="Multica" className="size-6 rounded-md" />
-            <span className="text-sm tracking-wide font-[family-name:var(--font-brand)]">
-              Multica
-            </span>
+      {showHeader && (
+        <header>
+          <div className="flex items-center justify-between px-4 py-2 max-w-4xl mx-auto">
+            <div className="flex items-center gap-2.5">
+              <img src="/icon.png" alt="Multica" className="size-6 rounded-md" />
+              <span className="text-sm tracking-wide font-[family-name:var(--font-brand)]">
+                Multica
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              {isConnected && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDisconnect}
+                  className="text-xs text-muted-foreground"
+                >
+                  Disconnect
+                </Button>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            {isConnected && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleDisconnect}
-                className="text-xs text-muted-foreground"
-              >
-                Disconnect
-              </Button>
-            )}
-          </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Main */}
       <main ref={mainRef} className="flex-1 overflow-y-auto min-h-0" style={fadeStyle}>

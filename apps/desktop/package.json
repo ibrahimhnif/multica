@@ -13,13 +13,15 @@
     "@hugeicons/core-free-icons": "^3.1.1",
     "@hugeicons/react": "^1.1.4",
     "@multica/sdk": "workspace:*",
+    "@multica/store": "workspace:*",
     "@multica/ui": "workspace:*",
     "qrcode.react": "^4.2.0",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router-dom": "^7.13.0",
     "socket.io-client": "^4.8.3",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "zustand": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",

@@ -1,4 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { Toaster } from '@multica/ui/components/ui/sonner'
 import { Button } from '@multica/ui/components/ui/button'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -55,9 +56,10 @@ export default function Layout() {
       </nav>
 
       {/* Content */}
-      <main className="flex-1 overflow-auto p-4">
+      <main className={cn('flex-1 overflow-auto', location.pathname === '/chat' ? '' : 'p-4')}>
         <Outlet />
       </main>
+      <Toaster />
     </div>
   )
 }
