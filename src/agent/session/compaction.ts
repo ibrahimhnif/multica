@@ -19,7 +19,8 @@ export type CompactionResult = {
   tokensKept?: number | undefined;
   /** Summary generated in summary mode */
   summary?: string | undefined;
-  reason: "count" | "tokens" | "summary";
+  /** Reason for compaction: count, tokens, summary, or pruning (tool result trimming only) */
+  reason: "count" | "tokens" | "summary" | "pruning";
 };
 
 /**

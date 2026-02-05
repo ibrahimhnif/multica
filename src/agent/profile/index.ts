@@ -292,10 +292,10 @@ export class ProfileManager {
   updateStyle(style: string): void {
     const profile = this.getOrCreateProfile(false);
     const currentConfig = profile.config ?? {};
-    const newConfig: ProfileConfig = {
-      ...currentConfig,
+    // Use Object.assign to avoid exactOptionalPropertyTypes issues with spread
+    const newConfig: ProfileConfig = Object.assign({}, currentConfig, {
       style: style as ProfileConfig["style"],
-    };
+    });
     profile.config = newConfig;
     this.profile = profile;
     writeProfileConfig(this.profileId, newConfig, { baseDir: this.baseDir });

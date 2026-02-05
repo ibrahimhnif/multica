@@ -2,11 +2,15 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { getModel, type Model } from "@mariozechner/pi-ai";
 import type { SessionEntry, SessionMeta } from "./types.js";
 import { appendEntry, readEntries, resolveSessionPath, writeEntries } from "./storage.js";
-import { compactMessages, compactMessagesAsync } from "./compaction.js";
+import { compactMessages, compactMessagesAsync, type CompactionResult } from "./compaction.js";
 import { estimateTokenUsage, shouldCompact as shouldCompactTokens } from "../context-window/index.js";
 import { credentialManager } from "../credentials.js";
 import { repairSessionFileIfNeeded, type RepairReport } from "./session-file-repair.js";
 import { sanitizeToolCallInputs, sanitizeToolUseResultPairing } from "./session-transcript-repair.js";
+import {
+  pruneToolResults,
+  type ToolResultPruningSettings,
+} from "../context-window/tool-result-pruning.js";
 
 /** Get Kimi model for summarization (use a cheaper model than k2-thinking) */
 function getSummaryModel(): Model<any> {
@@ -54,6 +58,12 @@ export type SessionManagerOptions = {
   apiKey?: string | undefined;
   /** Custom summary instructions */
   customInstructions?: string | undefined;
+
+  // Tool result pruning
+  /** Whether to enable tool result pruning before compaction (default: true in tokens/summary mode) */
+  enableToolResultPruning?: boolean | undefined;
+  /** Tool result pruning settings */
+  toolResultPruning?: Partial<ToolResultPruningSettings> | undefined;
 };
 
 export class SessionManager {
@@ -74,6 +84,9 @@ export class SessionManager {
   private apiKey: string | undefined;
   private readonly customInstructions: string | undefined;
   private previousSummary: string | undefined;
+  // Tool result pruning
+  private readonly enableToolResultPruning: boolean;
+  private readonly toolResultPruning: Partial<ToolResultPruningSettings> | undefined;
 
   private queue: Promise<void> = Promise.resolve();
   private meta: SessionMeta | undefined;
@@ -100,6 +113,12 @@ export class SessionManager {
     this.model = options.model;
     this.apiKey = options.apiKey;
     this.customInstructions = options.customInstructions;
+
+    // Tool result pruning (enabled by default in tokens/summary mode)
+    this.enableToolResultPruning =
+      options.enableToolResultPruning ??
+      (this.compactionMode === "tokens" || this.compactionMode === "summary");
+    this.toolResultPruning = options.toolResultPruning;
 
     this.meta = this.loadMeta();
   }
@@ -209,7 +228,33 @@ export class SessionManager {
     return shouldCompactTokens(estimation);
   }
 
-  async maybeCompact(messages: AgentMessage[]) {
+  async maybeCompact(messages: AgentMessage[]): Promise<CompactionResult | null> {
+    let workingMessages = messages;
+    let toolResultPruningApplied = false;
+
+    // Phase 1: Tool result pruning (soft trim / hard clear)
+    // This reduces token usage without removing messages
+    if (this.enableToolResultPruning) {
+      const pruneResult = pruneToolResults({
+        messages: workingMessages,
+        contextWindowTokens: this.contextWindowTokens,
+        settings: this.toolResultPruning,
+      });
+
+      if (pruneResult.changed) {
+        workingMessages = pruneResult.messages;
+        toolResultPruningApplied = true;
+        // Log pruning stats
+        if (pruneResult.softTrimmed > 0 || pruneResult.hardCleared > 0) {
+          console.error(
+            `[SessionManager] Tool result pruning: ${pruneResult.softTrimmed} soft-trimmed, ` +
+              `${pruneResult.hardCleared} hard-cleared, ~${Math.round(pruneResult.charsSaved / 1000)}k chars saved`,
+          );
+        }
+      }
+    }
+
+    // Phase 2: Message compaction (remove old messages if still needed)
     let result;
 
     if (this.compactionMode === "summary") {
@@ -219,7 +264,7 @@ export class SessionManager {
 
       if (!apiKey) {
         // No API key available, downgrade to tokens mode
-        result = compactMessages(messages, {
+        result = compactMessages(workingMessages, {
           mode: "tokens",
           contextWindowTokens: this.contextWindowTokens,
           systemPrompt: this.systemPrompt,
@@ -228,7 +273,7 @@ export class SessionManager {
           minKeepMessages: this.minKeepMessages,
         });
       } else {
-        result = await compactMessagesAsync(messages, {
+        result = await compactMessagesAsync(workingMessages, {
           mode: "summary",
           model,
           apiKey,
@@ -247,7 +292,7 @@ export class SessionManager {
         }
       }
     } else {
-      result = compactMessages(messages, {
+      result = compactMessages(workingMessages, {
         mode: this.compactionMode,
         // Count mode parameters
         maxMessages: this.maxMessages,
@@ -261,7 +306,14 @@ export class SessionManager {
       });
     }
 
-    if (!result) return null;
+    // If no message compaction needed but tool result pruning was applied,
+    // still return the pruned messages
+    if (!result) {
+      if (toolResultPruningApplied) {
+        return { kept: workingMessages, removedCount: 0, reason: "pruning" as const };
+      }
+      return null;
+    }
 
     const entries: SessionEntry[] = [];
     if (this.meta) {

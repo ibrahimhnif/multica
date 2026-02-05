@@ -23,5 +23,5 @@ export type SessionEntry =
       tokensKept?: number | undefined;
       /** 摘要模式生成的摘要 */
       summary?: string | undefined;
-      reason?: "count" | "tokens" | "summary" | undefined;
+      reason?: "count" | "tokens" | "summary" | "pruning" | undefined;
     };

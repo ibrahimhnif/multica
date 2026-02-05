@@ -44,3 +44,13 @@ export {
   compactMessagesWithSummary,
   compactMessagesWithChunkedSummary,
 } from "./summarization.js";
+
+// Tool result pruning
+export type {
+  ToolResultPruningSettings,
+  ToolResultPruningResult,
+} from "./tool-result-pruning.js";
+export {
+  DEFAULT_TOOL_RESULT_PRUNING_SETTINGS,
+  pruneToolResults,
+} from "./tool-result-pruning.js";

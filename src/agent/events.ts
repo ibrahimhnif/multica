@@ -23,7 +23,7 @@ export type CompactionEndEvent = {
   kept: number;
   tokensRemoved?: number;
   tokensKept?: number;
-  reason: "count" | "tokens" | "summary";
+  reason: "count" | "tokens" | "summary" | "pruning";
 };
 
 /** Union of all Multica-specific events */
