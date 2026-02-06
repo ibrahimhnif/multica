@@ -144,7 +144,7 @@ describe("AsyncAgent internal flow", () => {
     agent.close();
   });
 
-  it("forwards only assistant message_end events when writeInternal opts in", async () => {
+  it("forwards assistant message stream (start/update/end) when writeInternal opts in", async () => {
     let resolveRunInternal: ((value: { text: string; thinking: undefined; error: undefined }) => void) | undefined;
     runInternalMock.mockImplementationOnce(
       () => new Promise((resolve) => {
@@ -162,6 +162,14 @@ describe("AsyncAgent internal flow", () => {
 
     internalRunState.value = true;
     streamCallback!({
+      type: "message_start",
+      message: { role: "assistant", content: [] },
+    });
+    streamCallback!({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "partial" }] },
+    });
+    streamCallback!({
       type: "message_end",
       message: { role: "user", content: [{ type: "text", text: "hidden internal prompt" }] },
     });
@@ -173,12 +181,26 @@ describe("AsyncAgent internal flow", () => {
     const first = await nextWithTimeout(iter);
     expect(first).not.toBe("timeout");
     if (first !== "timeout") {
-      expect((first as { type: string }).type).toBe("message_end");
+      expect((first as { type: string }).type).toBe("message_start");
       expect((first as { message: { role: string } }).message.role).toBe("assistant");
     }
 
     const second = await nextWithTimeout(iter);
-    expect(second).toBe("timeout");
+    expect(second).not.toBe("timeout");
+    if (second !== "timeout") {
+      expect((second as { type: string }).type).toBe("message_update");
+      expect((second as { message: { role: string } }).message.role).toBe("assistant");
+    }
+
+    const third = await nextWithTimeout(iter);
+    expect(third).not.toBe("timeout");
+    if (third !== "timeout") {
+      expect((third as { type: string }).type).toBe("message_end");
+      expect((third as { message: { role: string } }).message.role).toBe("assistant");
+    }
+
+    const fourth = await nextWithTimeout(iter);
+    expect(fourth).toBe("timeout");
 
     resolveRunInternal!({ text: "", thinking: undefined, error: undefined });
     await agent.waitForIdle();

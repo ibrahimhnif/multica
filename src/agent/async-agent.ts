@@ -129,7 +129,9 @@ export class AsyncAgent {
   private shouldForwardEvent(event: AgentEvent | MulticaEvent): boolean {
     if (!this.agent.isInternalRun) return true;
     if (!this.forwardInternalAssistant) return false;
-    if (event.type !== "message_end") return false;
+    if (event.type !== "message_start" && event.type !== "message_update" && event.type !== "message_end") {
+      return false;
+    }
 
     const maybeMessage = (event as { message?: unknown }).message;
     if (!maybeMessage || typeof maybeMessage !== "object") return false;
