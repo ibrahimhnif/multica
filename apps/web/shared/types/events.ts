@@ -47,6 +47,7 @@ export type WSEventType =
 export interface WSMessage<T = unknown> {
   type: WSEventType;
   payload: T;
+  actor_id?: string;
 }
 
 export interface IssueCreatedPayload {

@@ -30,7 +30,7 @@ func registerListeners(bus *events.Bus, hub *realtime.Hub) {
 		if recipientID == "" {
 			return
 		}
-		data, err := json.Marshal(map[string]any{"type": e.Type, "payload": e.Payload})
+		data, err := json.Marshal(map[string]any{"type": e.Type, "payload": e.Payload, "actor_id": e.ActorID})
 		if err != nil {
 			return
 		}
@@ -87,7 +87,7 @@ func registerListeners(bus *events.Bus, hub *realtime.Hub) {
 		if userID == "" {
 			return
 		}
-		data, err := json.Marshal(map[string]any{"type": e.Type, "payload": e.Payload})
+		data, err := json.Marshal(map[string]any{"type": e.Type, "payload": e.Payload, "actor_id": e.ActorID})
 		if err != nil {
 			return
 		}
@@ -102,8 +102,9 @@ func registerListeners(bus *events.Bus, hub *realtime.Hub) {
 		}
 
 		msg := map[string]any{
-			"type":    e.Type,
-			"payload": e.Payload,
+			"type":     e.Type,
+			"payload":  e.Payload,
+			"actor_id": e.ActorID,
 		}
 		data, err := json.Marshal(msg)
 		if err != nil {
