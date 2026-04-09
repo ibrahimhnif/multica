@@ -23,6 +23,8 @@ Additionally, each user who wants to run AI agents locally installs the **`multi
 
 ## Quick Start (Docker Compose)
 
+The easiest way to get started is using the included `docker-compose.yml`, which bundles the database, migrations, backend, frontend, and local S3 storage (MinIO).
+
 ```bash
 git clone https://github.com/multica-ai/multica.git
 cd multica
@@ -32,9 +34,23 @@ cp .env.example .env
 Edit `.env` with your production values (see [Configuration](#configuration) below), then:
 
 ```bash
-# Start PostgreSQL
-docker compose up -d
+# Build and start all services
+docker compose up -d --build
+```
 
+This will start:
+- **PostgreSQL** on port `5432`
+- **MinIO** (S3 storage) on port `9000` (API) and `9001` (Console)
+- **Migrations** (runs once to update the schema)
+- **Backend API** on port `8080`
+- **Frontend** on port `3000`
+
+### Manual Build & Run
+
+If you prefer to run components separately:
+
+#### Backend
+```bash
 # Build the backend
 make build
 
@@ -45,8 +61,7 @@ DATABASE_URL="your-database-url" ./server/bin/migrate up
 DATABASE_URL="your-database-url" PORT=8080 ./server/bin/server
 ```
 
-For the frontend:
-
+#### Frontend
 ```bash
 pnpm install
 pnpm build
@@ -87,16 +102,32 @@ Multica uses email-based magic link authentication via [Resend](https://resend.c
 
 ### File Storage (Optional)
 
-For file uploads and attachments, configure S3 and CloudFront:
+For file uploads and attachments, configure S3 (AWS) or a compatible local storage like MinIO.
 
-| Variable | Description |
-|----------|-------------|
-| `S3_BUCKET` | S3 bucket name |
-| `S3_REGION` | AWS region (default: `us-west-2`) |
-| `CLOUDFRONT_DOMAIN` | CloudFront distribution domain |
-| `CLOUDFRONT_KEY_PAIR_ID` | CloudFront key pair ID for signed URLs |
-| `CLOUDFRONT_PRIVATE_KEY` | CloudFront private key (PEM format) |
-| `COOKIE_DOMAIN` | Domain for CloudFront auth cookies |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `S3_BUCKET` | S3 bucket name | (None, required for uploads) |
+| `S3_REGION` | S3 region | `us-west-2` |
+| `S3_ENDPOINT` | Internal S3 endpoint (for MinIO) | (AWS default) |
+| `S3_PUBLIC_ENDPOINT` | Public-facing S3 URL (for browser access) | (Same as S3_ENDPOINT) |
+| `S3_FORCE_PATH_STYLE` | Set to `true` for MinIO/local S3 | `false` |
+| `AWS_ACCESS_KEY_ID` | Access key for S3 | (None) |
+| `AWS_SECRET_ACCESS_KEY` | Secret key for S3 | (None) |
+| `CLOUDFRONT_DOMAIN` | CloudFront distribution domain (optional) | (None) |
+| `CLOUDFRONT_KEY_PAIR_ID` | CloudFront key pair ID for signed URLs | (None) |
+| `CLOUDFRONT_PRIVATE_KEY` | CloudFront private key (PEM format) | (None) |
+| `COOKIE_DOMAIN` | Domain for CloudFront auth cookies | (None) |
+
+#### Local Storage (MinIO)
+When using the included MinIO in `docker-compose.yml`, these are set automatically for the `api` service. If running manually, use:
+```bash
+S3_BUCKET=multica-bucket
+S3_REGION=us-east-1
+S3_ENDPOINT=http://localhost:9000
+S3_FORCE_PATH_STYLE=true
+AWS_ACCESS_KEY_ID=multica
+AWS_SECRET_ACCESS_KEY=multica-secret
+```
 
 ### Server
 
