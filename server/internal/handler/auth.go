@@ -227,7 +227,7 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 	code, err := generateCode()
 	if err != nil {
 		slog.Error("failed to generate verification code", "error", err, "email", email)
-		writeError(w, http.StatusInternalServerError, "failed to generate code")
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to generate code: %v", err))
 		return
 	}
 
@@ -238,13 +238,13 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		slog.Error("failed to store verification code in database", "error", err, "email", email)
-		writeError(w, http.StatusInternalServerError, "failed to store verification code")
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to store verification code: %v", err))
 		return
 	}
 
 	if err := h.EmailService.SendVerificationCode(email, code); err != nil {
 		slog.Error("failed to send verification code email", "error", err, "email", email)
-		writeError(w, http.StatusInternalServerError, "failed to send verification code")
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to send verification code: %v", err))
 		return
 	}
 
