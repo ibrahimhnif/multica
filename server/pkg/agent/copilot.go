@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// copilotBackend implements Backend by spawning a Copilot-compatible CLI
-// that follows the stream-json output format.
+// copilotBackend implements Backend by spawning the Copilot CLI
+// with --output-format stream-json.
 type copilotBackend struct {
 	cfg Config
 }
@@ -32,16 +32,12 @@ func (b *copilotBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 
 	args := []string{
-		"run",
-		"--format", "json",
+		"--prompt", prompt,
+		"--output-format", "stream-json",
 	}
 	if opts.Model != "" {
 		args = append(args, "--model", opts.Model)
 	}
-	if opts.SystemPrompt != "" {
-		args = append(args, "--system", opts.SystemPrompt)
-	}
-	args = append(args, prompt)
 
 	cmd := exec.CommandContext(runCtx, execPath, args...)
 	if opts.Cwd != "" {
@@ -93,42 +89,58 @@ func (b *copilotBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 				continue
 			}
 
-			// We reuse the Claude SDK JSON types for compatibility
-			var msg claudeSDKMessage
+			var msg geminiSDKMessage // Copilot CLI uses the same streaming format
 			if err := json.Unmarshal([]byte(line), &msg); err != nil {
 				continue
 			}
 
-			switch msg.Type {
-			case "assistant":
-				b.handleAssistant(msg, msgCh, &output, usage)
-			case "user":
-				b.handleUser(msg, msgCh)
-			case "system":
-				if msg.SessionID != "" {
-					sessionID = msg.SessionID
-				}
-				trySend(msgCh, Message{Type: MessageStatus, Status: "running"})
-			case "result":
+			if msg.SessionID != "" {
 				sessionID = msg.SessionID
-				if msg.ResultText != "" {
-					output.Reset()
-					output.WriteString(msg.ResultText)
+			}
+
+			switch msg.Type {
+			case "chunk":
+				if msg.Delta != "" {
+					output.WriteString(msg.Delta)
+					trySend(msgCh, Message{Type: MessageText, Content: msg.Delta})
 				}
-				if msg.IsError {
-					finalStatus = "failed"
-					finalError = msg.ResultText
+			case "thought":
+				if msg.Thought != "" {
+					trySend(msgCh, Message{Type: MessageThinking, Content: msg.Thought})
 				}
-			case "log":
-				if msg.Log != nil {
+			case "call":
+				if msg.Call != nil {
 					trySend(msgCh, Message{
-						Type:    MessageLog,
-						Level:   msg.Log.Level,
-						Content: msg.Log.Message,
+						Type:   MessageToolUse,
+						Tool:   msg.Call.Name,
+						CallID: msg.Call.ID,
+						Input:  msg.Call.Input,
 					})
 				}
-			case "control_request":
-				b.handleControlRequest(msg, stdin)
+			case "response":
+				trySend(msgCh, Message{
+					Type:   MessageToolResult,
+					CallID: msg.CallID,
+					Output: msg.Output,
+				})
+			case "status":
+				trySend(msgCh, Message{Type: MessageStatus, Status: msg.Status})
+			case "info":
+				trySend(msgCh, Message{Type: MessageLog, Level: "info", Content: msg.Message})
+			case "result":
+				if msg.Response != "" {
+					output.Reset()
+					output.WriteString(msg.Response)
+				}
+				if msg.Stats != nil {
+					for modelName, stats := range msg.Stats.Models {
+						u := usage[modelName]
+						u.InputTokens += stats.Tokens.Input
+						u.OutputTokens += stats.Tokens.Candidates
+						u.CacheReadTokens += stats.Tokens.Cached
+						usage[modelName] = u
+					}
+				}
 			}
 		}
 
@@ -160,103 +172,4 @@ func (b *copilotBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 	}()
 
 	return &Session{Messages: msgCh, Result: resCh}, nil
-}
-
-func (b *copilotBackend) handleAssistant(msg claudeSDKMessage, ch chan<- Message, output *strings.Builder, usage map[string]TokenUsage) {
-	var content claudeMessageContent
-	if err := json.Unmarshal(msg.Message, &content); err != nil {
-		return
-	}
-
-	// Accumulate token usage per model.
-	if content.Usage != nil && content.Model != "" {
-		u := usage[content.Model]
-		u.InputTokens += content.Usage.InputTokens
-		u.OutputTokens += content.Usage.OutputTokens
-		usage[content.Model] = u
-	}
-
-	for _, block := range content.Content {
-		switch block.Type {
-		case "text":
-			if block.Text != "" {
-				output.WriteString(block.Text)
-				trySend(ch, Message{Type: MessageText, Content: block.Text})
-			}
-		case "thinking":
-			if block.Text != "" {
-				trySend(ch, Message{Type: MessageThinking, Content: block.Text})
-			}
-		case "tool_use":
-			var input map[string]any
-			if block.Input != nil {
-				_ = json.Unmarshal(block.Input, &input)
-			}
-			trySend(ch, Message{
-				Type:   MessageToolUse,
-				Tool:   block.Name,
-				CallID: block.ID,
-				Input:  input,
-			})
-		}
-	}
-}
-
-func (b *copilotBackend) handleUser(msg claudeSDKMessage, ch chan<- Message) {
-	var content claudeMessageContent
-	if err := json.Unmarshal(msg.Message, &content); err != nil {
-		return
-	}
-
-	for _, block := range content.Content {
-		if block.Type == "tool_result" {
-			resultStr := ""
-			if block.Content != nil {
-				resultStr = string(block.Content)
-			}
-			trySend(ch, Message{
-				Type:   MessageToolResult,
-				CallID: block.ToolUseID,
-				Output: resultStr,
-			})
-		}
-	}
-}
-
-func (b *copilotBackend) handleControlRequest(msg claudeSDKMessage, stdin interface{ Write([]byte) (int, error) }) {
-	// Auto-approve all tool uses in autonomous/daemon mode.
-	var req claudeControlRequestPayload
-	if err := json.Unmarshal(msg.Request, &req); err != nil {
-		return
-	}
-
-	var inputMap map[string]any
-	if req.Input != nil {
-		_ = json.Unmarshal(req.Input, &inputMap)
-	}
-	if inputMap == nil {
-		inputMap = map[string]any{}
-	}
-
-	response := map[string]any{
-		"type": "control_response",
-		"response": map[string]any{
-			"subtype":    "success",
-			"request_id": msg.RequestID,
-			"response": map[string]any{
-				"behavior":     "allow",
-				"updatedInput": inputMap,
-			},
-		},
-	}
-
-	data, err := json.Marshal(response)
-	if err != nil {
-		b.cfg.Logger.Warn("copilot: failed to marshal control response", "error", err)
-		return
-	}
-	data = append(data, '\n')
-	if _, err := stdin.Write(data); err != nil {
-		b.cfg.Logger.Warn("copilot: failed to write control response", "error", err)
-	}
 }
