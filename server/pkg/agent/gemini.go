@@ -86,7 +86,7 @@ func (b *geminiBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
-			if line == "" {
+			if line == "" || !strings.HasPrefix(line, "{") {
 				continue
 			}
 
@@ -100,45 +100,40 @@ func (b *geminiBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 			}
 
 			switch msg.Type {
-			case "chunk":
-				if msg.Delta != "" {
-					output.WriteString(msg.Delta)
-					trySend(msgCh, Message{Type: MessageText, Content: msg.Delta})
+			case "message":
+				if msg.Role == "assistant" && msg.Content != "" {
+					output.WriteString(msg.Content)
+					trySend(msgCh, Message{Type: MessageText, Content: msg.Content})
 				}
 			case "thought":
-				if msg.Thought != "" {
-					trySend(msgCh, Message{Type: MessageThinking, Content: msg.Thought})
+				if msg.Content != "" {
+					trySend(msgCh, Message{Type: MessageThinking, Content: msg.Content})
 				}
-			case "call":
-				if msg.Call != nil {
-					trySend(msgCh, Message{
-						Type:   MessageToolUse,
-						Tool:   msg.Call.Name,
-						CallID: msg.Call.ID,
-						Input:  msg.Call.Input,
-					})
-				}
-			case "response":
+			case "tool_use":
+				trySend(msgCh, Message{
+					Type:   MessageToolUse,
+					Tool:   msg.ToolName,
+					CallID: msg.ToolID,
+					Input:  msg.Parameters,
+				})
+			case "tool_result":
 				trySend(msgCh, Message{
 					Type:   MessageToolResult,
-					CallID: msg.CallID,
+					CallID: msg.ToolID,
 					Output: msg.Output,
 				})
 			case "status":
 				trySend(msgCh, Message{Type: MessageStatus, Status: msg.Status})
-			case "info":
-				trySend(msgCh, Message{Type: MessageLog, Level: "info", Content: msg.Message})
 			case "result":
-				if msg.Response != "" {
-					output.Reset()
-					output.WriteString(msg.Response)
+				if msg.Status == "error" || msg.Status == "fail" {
+					finalStatus = "failed"
 				}
 				if msg.Stats != nil {
 					for modelName, stats := range msg.Stats.Models {
 						u := usage[modelName]
-						u.InputTokens += stats.Tokens.Input
-						u.OutputTokens += stats.Tokens.Candidates
-						u.CacheReadTokens += stats.Tokens.Cached
+						u.InputTokens += stats.InputTokens
+						u.OutputTokens += stats.OutputTokens
+						u.CacheReadTokens += stats.Cached
 						usage[modelName] = u
 					}
 				}
@@ -181,32 +176,24 @@ type geminiSDKMessage struct {
 	Type      string `json:"type"`
 	SessionID string `json:"session_id,omitempty"`
 
-	// chunk fields
-	Delta string `json:"delta,omitempty"`
+	// message/thought fields
+	Role    string `json:"role,omitempty"`
+	Content string `json:"content,omitempty"`
+	Delta   bool   `json:"delta,omitempty"`
 
-	// thought fields
-	Thought string `json:"thought,omitempty"`
+	// tool_use fields
+	ToolName   string         `json:"tool_name,omitempty"`
+	ToolID     string         `json:"tool_id,omitempty"`
+	Parameters map[string]any `json:"parameters,omitempty"`
 
-	// call fields
-	Call *geminiToolCall `json:"call,omitempty"`
-
-	// response fields
-	CallID string `json:"call_id,omitempty"`
+	// tool_result fields
 	Output string `json:"output,omitempty"`
 
-	// status/info fields
-	Status  string `json:"status,omitempty"`
-	Message string `json:"message,omitempty"`
+	// status fields
+	Status string `json:"status,omitempty"`
 
 	// result fields
-	Response string       `json:"response,omitempty"`
-	Stats    *geminiStats `json:"stats,omitempty"`
-}
-
-type geminiToolCall struct {
-	ID    string         `json:"id"`
-	Name  string         `json:"name"`
-	Input map[string]any `json:"input"`
+	Stats *geminiStats `json:"stats,omitempty"`
 }
 
 type geminiStats struct {
@@ -214,9 +201,7 @@ type geminiStats struct {
 }
 
 type geminiModelStats struct {
-	Tokens struct {
-		Input      int64 `json:"input"`
-		Candidates int64 `json:"candidates"`
-		Cached     int64 `json:"cached"`
-	} `json:"tokens"`
+	InputTokens  int64 `json:"input_tokens"`
+	OutputTokens int64 `json:"output_tokens"`
+	Cached       int64 `json:"cached"`
 }

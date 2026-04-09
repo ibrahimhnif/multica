@@ -34,6 +34,7 @@ func (b *copilotBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 	args := []string{
 		"--prompt", prompt,
 		"--output-format", "stream-json",
+		"--approval-mode", "yolo",
 	}
 	if opts.Model != "" {
 		args = append(args, "--model", opts.Model)
@@ -85,7 +86,7 @@ func (b *copilotBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
-			if line == "" {
+			if line == "" || !strings.HasPrefix(line, "{") {
 				continue
 			}
 
@@ -99,45 +100,40 @@ func (b *copilotBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 			}
 
 			switch msg.Type {
-			case "chunk":
-				if msg.Delta != "" {
-					output.WriteString(msg.Delta)
-					trySend(msgCh, Message{Type: MessageText, Content: msg.Delta})
+			case "message":
+				if msg.Role == "assistant" && msg.Content != "" {
+					output.WriteString(msg.Content)
+					trySend(msgCh, Message{Type: MessageText, Content: msg.Content})
 				}
 			case "thought":
-				if msg.Thought != "" {
-					trySend(msgCh, Message{Type: MessageThinking, Content: msg.Thought})
+				if msg.Content != "" {
+					trySend(msgCh, Message{Type: MessageThinking, Content: msg.Content})
 				}
-			case "call":
-				if msg.Call != nil {
-					trySend(msgCh, Message{
-						Type:   MessageToolUse,
-						Tool:   msg.Call.Name,
-						CallID: msg.Call.ID,
-						Input:  msg.Call.Input,
-					})
-				}
-			case "response":
+			case "tool_use":
+				trySend(msgCh, Message{
+					Type:   MessageToolUse,
+					Tool:   msg.ToolName,
+					CallID: msg.ToolID,
+					Input:  msg.Parameters,
+				})
+			case "tool_result":
 				trySend(msgCh, Message{
 					Type:   MessageToolResult,
-					CallID: msg.CallID,
+					CallID: msg.ToolID,
 					Output: msg.Output,
 				})
 			case "status":
 				trySend(msgCh, Message{Type: MessageStatus, Status: msg.Status})
-			case "info":
-				trySend(msgCh, Message{Type: MessageLog, Level: "info", Content: msg.Message})
 			case "result":
-				if msg.Response != "" {
-					output.Reset()
-					output.WriteString(msg.Response)
+				if msg.Status == "error" || msg.Status == "fail" {
+					finalStatus = "failed"
 				}
 				if msg.Stats != nil {
 					for modelName, stats := range msg.Stats.Models {
 						u := usage[modelName]
-						u.InputTokens += stats.Tokens.Input
-						u.OutputTokens += stats.Tokens.Candidates
-						u.CacheReadTokens += stats.Tokens.Cached
+						u.InputTokens += stats.InputTokens
+						u.OutputTokens += stats.OutputTokens
+						u.CacheReadTokens += stats.Cached
 						usage[modelName] = u
 					}
 				}
