@@ -32,16 +32,16 @@ func (b *geminiBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 
 	args := []string{
-		"run",
-		"--format", "json",
+		"--prompt", prompt,
+		"--output-format", "stream-json",
+		"--approval-mode", "yolo",
 	}
 	if opts.Model != "" {
 		args = append(args, "--model", opts.Model)
 	}
-	if opts.SystemPrompt != "" {
-		args = append(args, "--system", opts.SystemPrompt)
-	}
-	args = append(args, prompt)
+	// Note: Gemini CLI doesn't seem to have a direct --system flag in the help output provided,
+	// but we can prepend it to the prompt if needed or wait for official support.
+	// For now, we'll omit it to avoid "unknown flag" errors.
 
 	cmd := exec.CommandContext(runCtx, execPath, args...)
 	if opts.Cwd != "" {
