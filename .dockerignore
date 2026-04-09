@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+apps/web/node_modules
+apps/web/.next
+apps/web/out
+dist
+*.log
+.env
+.env.*
+.eslintcache
+.goreleaser.yml

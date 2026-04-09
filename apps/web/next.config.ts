@@ -29,6 +29,7 @@ const nextConfig: NextConfig = {
     formats: ["image/avif", "image/webp"],
     qualities: [75, 80, 85],
   },
+  output: "standalone",
   async rewrites() {
     return [
       {
