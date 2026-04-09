@@ -105,7 +105,9 @@ export async function uploadAndInsertFile(
     }
   } else {
     // Non-image: insert skeleton fileCard → upload → finalize with real URL
-    const uploadId = crypto.randomUUID();
+    const uploadId = (typeof crypto !== "undefined" && crypto.randomUUID) 
+      ? crypto.randomUUID() 
+      : Math.random().toString(36).substring(2) + Date.now().toString(36);
     const cardAttrs = { filename: file.name, href: "", fileSize: file.size, uploading: true, uploadId };
     const insertContent = { type: "fileCard", attrs: cardAttrs };
     if (pos !== undefined) {
