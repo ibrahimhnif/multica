@@ -7,6 +7,7 @@ import { useLocale } from "../i18n";
 import {
   ClaudeCodeLogo,
   CodexLogo,
+  GeminiLogo,
   GitHubMark,
   githubUrl,
   heroButtonClassName,
@@ -64,6 +65,10 @@ export function LandingHero() {
               <div className="flex items-center gap-2.5 text-white/80">
                 <CodexLogo className="size-5" />
                 <span className="text-[15px] font-medium">Codex</span>
+              </div>
+              <div className="flex items-center gap-2.5 rounded-full border border-white/8 bg-white/4 py-1.5 pl-2 pr-4 backdrop-blur-md">
+                <GeminiLogo className="size-5" />
+                <span className="text-[15px] font-medium">Gemini</span>
               </div>
             </div>
           </div>

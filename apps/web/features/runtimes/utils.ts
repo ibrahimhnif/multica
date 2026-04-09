@@ -33,6 +33,10 @@ const MODEL_PRICING: Record<
   "claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
   "claude-opus-4-5": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
   "claude-opus-4-6": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  "gemini-2.0-flash": { input: 0.1, output: 0.4, cacheRead: 0.025, cacheWrite: 0.1 },
+  "gemini-2.0-pro": { input: 1.25, output: 5, cacheRead: 0.3125, cacheWrite: 1.25 },
+  "gemini-1.5-flash": { input: 0.075, output: 0.3, cacheRead: 0.01875, cacheWrite: 0.075 },
+  "gemini-1.5-pro": { input: 1.25, output: 5, cacheRead: 0.3125, cacheWrite: 1.25 },
 };
 
 export function estimateCost(usage: RuntimeUsage): number {

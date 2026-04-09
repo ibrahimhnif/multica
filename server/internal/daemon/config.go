@@ -94,15 +94,21 @@ func LoadConfig(overrides Overrides) (Config, error) {
 	}
 	openclawPath := envOrDefault("MULTICA_OPENCLAW_PATH", "openclaw")
 	if _, err := exec.LookPath(openclawPath); err == nil {
-		agents["openclaw"] = AgentEntry{
-			Path:  openclawPath,
-			Model: strings.TrimSpace(os.Getenv("MULTICA_OPENCLAW_MODEL")),
-		}
+	        agents["openclaw"] = AgentEntry{
+	                Path:  openclawPath,
+	                Model: strings.TrimSpace(os.Getenv("MULTICA_OPENCLAW_MODEL")),
+	        }
+	}
+	geminiPath := envOrDefault("MULTICA_GEMINI_PATH", "gemini")
+	if _, err := exec.LookPath(geminiPath); err == nil {
+	        agents["gemini"] = AgentEntry{
+	                Path:  geminiPath,
+	                Model: strings.TrimSpace(os.Getenv("MULTICA_GEMINI_MODEL")),
+	        }
 	}
 	if len(agents) == 0 {
-		return Config{}, fmt.Errorf("no agent CLI found: install claude, codex, opencode, or openclaw and ensure it is on PATH")
+	        return Config{}, fmt.Errorf("no agent CLI found: install claude, codex, opencode, openclaw, or gemini and ensure it is on PATH")
 	}
-
 	// Host info
 	host, err := os.Hostname()
 	if err != nil || strings.TrimSpace(host) == "" {
