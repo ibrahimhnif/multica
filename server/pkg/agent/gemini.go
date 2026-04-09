@@ -129,6 +129,8 @@ func (b *geminiBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 						Content: msg.Log.Message,
 					})
 				}
+			case "control_request":
+				b.handleControlRequest(msg, stdin)
 			}
 		}
 
@@ -222,5 +224,43 @@ func (b *geminiBackend) handleUser(msg claudeSDKMessage, ch chan<- Message) {
 				Output: resultStr,
 			})
 		}
+	}
+}
+
+func (b *geminiBackend) handleControlRequest(msg claudeSDKMessage, stdin interface{ Write([]byte) (int, error) }) {
+	// Auto-approve all tool uses in autonomous/daemon mode.
+	var req claudeControlRequestPayload
+	if err := json.Unmarshal(msg.Request, &req); err != nil {
+		return
+	}
+
+	var inputMap map[string]any
+	if req.Input != nil {
+		_ = json.Unmarshal(req.Input, &inputMap)
+	}
+	if inputMap == nil {
+		inputMap = map[string]any{}
+	}
+
+	response := map[string]any{
+		"type": "control_response",
+		"response": map[string]any{
+			"subtype":    "success",
+			"request_id": msg.RequestID,
+			"response": map[string]any{
+				"behavior":     "allow",
+				"updatedInput": inputMap,
+			},
+		},
+	}
+
+	data, err := json.Marshal(response)
+	if err != nil {
+		b.cfg.Logger.Warn("gemini: failed to marshal control response", "error", err)
+		return
+	}
+	data = append(data, '\n')
+	if _, err := stdin.Write(data); err != nil {
+		b.cfg.Logger.Warn("gemini: failed to write control response", "error", err)
 	}
 }
