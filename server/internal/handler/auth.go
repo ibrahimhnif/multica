@@ -226,6 +226,7 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 
 	code, err := generateCode()
 	if err != nil {
+		slog.Error("failed to generate verification code", "error", err, "email", email)
 		writeError(w, http.StatusInternalServerError, "failed to generate code")
 		return
 	}
@@ -236,11 +237,13 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(10 * time.Minute), Valid: true},
 	})
 	if err != nil {
+		slog.Error("failed to store verification code in database", "error", err, "email", email)
 		writeError(w, http.StatusInternalServerError, "failed to store verification code")
 		return
 	}
 
 	if err := h.EmailService.SendVerificationCode(email, code); err != nil {
+		slog.Error("failed to send verification code email", "error", err, "email", email)
 		writeError(w, http.StatusInternalServerError, "failed to send verification code")
 		return
 	}
@@ -280,17 +283,20 @@ func (h *Handler) VerifyCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.Queries.MarkVerificationCodeUsed(r.Context(), dbCode.ID); err != nil {
+		slog.Error("failed to mark verification code as used", "error", err, "email", email)
 		writeError(w, http.StatusInternalServerError, "failed to verify code")
 		return
 	}
 
 	user, err := h.findOrCreateUser(r.Context(), email)
 	if err != nil {
+		slog.Error("failed to find or create user during verify-code", "error", err, "email", email)
 		writeError(w, http.StatusInternalServerError, "failed to create user")
 		return
 	}
 
 	if err := h.ensureUserWorkspace(r.Context(), user); err != nil {
+		slog.Error("failed to ensure user workspace during verify-code", "error", err, "email", email, "user_id", uuidToString(user.ID))
 		writeError(w, http.StatusInternalServerError, "failed to provision workspace")
 		return
 	}
