@@ -181,7 +181,7 @@ export const en: LandingDict = {
       {
         question: "What coding agents does Multica support?",
         answer:
-          "Multica currently supports Claude Code, OpenAI Codex, and Google Gemini out of the box. The daemon auto-detects whichever CLIs you have installed. More backends are on the roadmap \u2014 and since it\u2019s open source, you can add your own.",
+          "Multica currently supports Claude Code, OpenAI Codex, Google Gemini, and Copilot CLI out of the box. The daemon auto-detects whichever CLIs you have installed. More backends are on the roadmap \u2014 and since it\u2019s open source, you can add your own.",
       },
       {
         question: "Do I need to self-host, or is there a cloud version?",
@@ -190,7 +190,7 @@ export const en: LandingDict = {
       },
       {
         question:
-          "How is this different from just using Claude Code, Codex, or Gemini directly?",
+          "How is this different from just using Claude Code, Codex, Gemini, or Copilot CLI directly?",
         answer:
           "Coding agents are great at executing. Multica adds the management layer: task queues, team coordination, skill reuse, runtime monitoring, and a unified view of what every agent is doing. Think of it as the project manager for your agents.",
       },
@@ -404,7 +404,7 @@ export const en: LandingDict = {
         changes: [
           "Multi-workspace switching and creation",
           "Agent management UI with skills",
-          "Unified agent SDK supporting Claude Code, Codex, and Gemini backends",
+          "Unified agent SDK supporting Claude Code, Codex, Gemini, and Copilot CLI backends",
           "Comment CRUD with real-time WebSocket updates",
           "Task service layer and daemon REST protocol",
           "Event bus with workspace-scoped WebSocket isolation",

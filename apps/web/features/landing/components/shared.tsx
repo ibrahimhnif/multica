@@ -74,6 +74,19 @@ export function GeminiLogo({ className }: { className?: string }) {
   );
 }
 
+export function CopilotLogo({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={className}
+      fill="currentColor"
+    >
+      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 22c-5.523 0-10-4.477-10-10S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm1-15h-2v6h2v-6zm0 8h-2v2h2v-2z" />
+    </svg>
+  );
+}
+
 export function headerButtonClassName(
   tone: "ghost" | "solid",
   variant: "dark" | "light" = "dark",

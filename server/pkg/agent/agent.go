@@ -105,8 +105,10 @@ func New(agentType string, cfg Config) (Backend, error) {
 		return &openclawBackend{cfg: cfg}, nil
 	case "gemini":
 		return &geminiBackend{cfg: cfg}, nil
+	case "copilot":
+		return &copilotBackend{cfg: cfg}, nil
 	default:
-		return nil, fmt.Errorf("unknown agent type: %q (supported: claude, codex, opencode, openclaw, gemini)", agentType)
+		return nil, fmt.Errorf("unknown agent type: %q (supported: claude, codex, opencode, openclaw, gemini, copilot)", agentType)
 	}
 }
 

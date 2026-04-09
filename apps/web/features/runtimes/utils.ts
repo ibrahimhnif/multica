@@ -37,6 +37,8 @@ const MODEL_PRICING: Record<
   "gemini-2.0-pro": { input: 1.25, output: 5, cacheRead: 0.3125, cacheWrite: 1.25 },
   "gemini-1.5-flash": { input: 0.075, output: 0.3, cacheRead: 0.01875, cacheWrite: 0.075 },
   "gemini-1.5-pro": { input: 1.25, output: 5, cacheRead: 0.3125, cacheWrite: 1.25 },
+  "copilot-gpt-4": { input: 10, output: 30, cacheRead: 0, cacheWrite: 0 },
+  "copilot-claude-3-5": { input: 3, output: 15, cacheRead: 0, cacheWrite: 0 },
 };
 
 export function estimateCost(usage: RuntimeUsage): number {
