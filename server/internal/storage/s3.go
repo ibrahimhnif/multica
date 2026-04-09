@@ -27,6 +27,9 @@ type S3Storage struct {
 // Environment variables:
 //   - S3_BUCKET (required)
 //   - S3_REGION (default: us-west-2)
+//   - S3_ENDPOINT (optional; internal endpoint for MinIO or local testing)
+//   - S3_PUBLIC_ENDPOINT (optional; public-facing endpoint for returning URLs)
+//   - S3_FORCE_PATH_STYLE (optional; "true" or "false"; default: false)
 //   - AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (optional; falls back to default credential chain)
 func NewS3StorageFromEnv() *S3Storage {
 	bucket := os.Getenv("S3_BUCKET")
@@ -39,6 +42,9 @@ func NewS3StorageFromEnv() *S3Storage {
 	if region == "" {
 		region = "us-west-2"
 	}
+
+	endpoint := os.Getenv("S3_ENDPOINT")
+	forcePathStyle := os.Getenv("S3_FORCE_PATH_STYLE") == "true"
 
 	opts := []func(*config.LoadOptions) error{
 		config.WithRegion(region),
@@ -60,9 +66,20 @@ func NewS3StorageFromEnv() *S3Storage {
 
 	cdnDomain := os.Getenv("CLOUDFRONT_DOMAIN")
 
-	slog.Info("S3 storage initialized", "bucket", bucket, "region", region, "cdn_domain", cdnDomain)
+	s3Opts := []func(*s3.Options){
+		func(o *s3.Options) {
+			o.UsePathStyle = forcePathStyle
+		},
+	}
+	if endpoint != "" {
+		s3Opts = append(s3Opts, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(endpoint)
+		})
+	}
+
+	slog.Info("S3 storage initialized", "bucket", bucket, "region", region, "cdn_domain", cdnDomain, "endpoint", endpoint)
 	return &S3Storage{
-		client:    s3.NewFromConfig(cfg),
+		client:    s3.NewFromConfig(cfg, s3Opts...),
 		bucket:    bucket,
 		cdnDomain: cdnDomain,
 	}
@@ -136,6 +153,21 @@ func (s *S3Storage) Upload(ctx context.Context, key string, data []byte, content
 	})
 	if err != nil {
 		return "", fmt.Errorf("s3 PutObject: %w", err)
+	}
+
+	publicEndpoint := os.Getenv("S3_PUBLIC_ENDPOINT")
+	if publicEndpoint == "" {
+		publicEndpoint = os.Getenv("S3_ENDPOINT")
+	}
+
+	if publicEndpoint != "" {
+		// For local dev/MinIO, return the actual endpoint URL.
+		// If using path-style, it's endpoint/bucket/key
+		if os.Getenv("S3_FORCE_PATH_STYLE") == "true" {
+			return fmt.Sprintf("%s/%s/%s", publicEndpoint, s.bucket, key), nil
+		}
+		// Otherwise it's bucket.endpoint/key
+		return fmt.Sprintf("http://%s.%s/%s", s.bucket, strings.TrimPrefix(strings.TrimPrefix(publicEndpoint, "http://"), "https://"), key), nil
 	}
 
 	domain := s.bucket
