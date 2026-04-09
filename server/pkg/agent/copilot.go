@@ -128,6 +128,10 @@ func (b *copilotBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 				if msg.Status == "error" || msg.Status == "fail" {
 					finalStatus = "failed"
 				}
+				// Use the final response if available (especially if streaming didn't happen)
+				if msg.Response != "" && output.Len() == 0 {
+					output.WriteString(msg.Response)
+				}
 				if msg.Stats != nil {
 					for modelName, stats := range msg.Stats.Models {
 						u := usage[modelName]

@@ -128,6 +128,10 @@ func (b *geminiBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 				if msg.Status == "error" || msg.Status == "fail" {
 					finalStatus = "failed"
 				}
+				// Use the final response if available (especially if streaming didn't happen)
+				if msg.Response != "" && output.Len() == 0 {
+					output.WriteString(msg.Response)
+				}
 				if msg.Stats != nil {
 					for modelName, stats := range msg.Stats.Models {
 						u := usage[modelName]
@@ -193,7 +197,8 @@ type geminiSDKMessage struct {
 	Status string `json:"status,omitempty"`
 
 	// result fields
-	Stats *geminiStats `json:"stats,omitempty"`
+	Response string       `json:"response,omitempty"`
+	Stats    *geminiStats `json:"stats,omitempty"`
 }
 
 type geminiStats struct {
