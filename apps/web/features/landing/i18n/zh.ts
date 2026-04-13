@@ -126,7 +126,7 @@ export const zh: LandingDict = {
       {
         title: "\u5b89\u88c5 CLI \u5e76\u8fde\u63a5\u4f60\u7684\u673a\u5668",
         description:
-          "\u8fd0\u884c multica login \u8fdb\u884c\u8ba4\u8bc1\uff0c\u7136\u540e multica daemon start\u3002\u5b88\u62a4\u8fdb\u7a0b\u81ea\u52a8\u68c0\u6d4b\u4f60\u673a\u5668\u4e0a\u7684 Claude Code\u3001Codex\u3001OpenClaw \u548c OpenCode\u2014\u2014\u63d2\u4e0a\u5c31\u7528\u3002",
+          "运行 multica setup 一键完成配置、认证和启动。守护进程自动检测你机器上的 Claude Code、Codex、OpenClaw 和 OpenCode——插上就用。",
       },
       {
         title: "\u521b\u5efa\u4f60\u7684\u7b2c\u4e00\u4e2a Agent",
@@ -301,7 +301,7 @@ export const zh: LandingDict = {
         title: "一键安装、自部署与稳定性",
         changes: [],
         features: [
-          "一键安装与配置——`curl | bash` 安装 CLI，`--local` 完整自部署，`multica setup` 自动检测本地服务器",
+          "一键安装与配置——`curl | bash` 安装 CLI，`--with-server` 完整自部署，`multica setup` 配置连接环境",
           "自部署存储——无 S3 时本地文件存储回退，支持自定义 S3 端点（MinIO）",
           "项目列表页支持行内编辑属性（优先级、状态、负责人）",
         ],

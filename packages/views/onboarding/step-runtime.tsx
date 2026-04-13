@@ -1,27 +1,49 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Terminal, Loader2 } from "lucide-react";
 import { Button } from "@multica/ui/components/ui/button";
 import { Card, CardContent } from "@multica/ui/components/ui/card";
 import { useWSEvent } from "@multica/core/realtime";
+import { api } from "@multica/core/api";
 import { ProviderLogo } from "../runtimes/components/provider-logo";
 import {
   runtimeListOptions,
   runtimeKeys,
 } from "@multica/core/runtimes/queries";
 
-const SETUP_STEPS = [
-  {
-    label: "Install the Multica CLI",
-    cmd: "curl -fsSL https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.sh | bash",
-  },
-  {
-    label: "Set up and start the daemon",
-    cmd: "multica setup",
-  },
-];
+const CLOUD_HOST = "multica.ai";
+
+const INSTALL_STEP = {
+  label: "Install the Multica CLI",
+  cmd: "curl -fsSL https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.sh | bash",
+};
+
+function isCloudEnvironment(): boolean {
+  if (typeof window === "undefined") return true;
+  return window.location.hostname.endsWith(CLOUD_HOST);
+}
+
+function buildSetupCommand(): string {
+  if (isCloudEnvironment()) return "multica setup";
+
+  const appUrl = typeof window !== "undefined" ? window.location.origin : "";
+  const apiBaseUrl = api.getBaseUrl?.() ?? "";
+  const serverUrl = apiBaseUrl || appUrl;
+
+  if (!serverUrl || serverUrl === "http://localhost:8080") {
+    // Default self-host — no flags needed
+    return "multica setup self-host";
+  }
+
+  const parts = ["multica setup self-host"];
+  parts.push(`--server-url ${serverUrl}`);
+  if (appUrl && appUrl !== serverUrl) {
+    parts.push(`--app-url ${appUrl}`);
+  }
+  return parts.join(" ");
+}
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -56,6 +78,14 @@ export function StepRuntime({
 }) {
   const qc = useQueryClient();
 
+  const setupSteps = useMemo(
+    () => [
+      INSTALL_STEP,
+      { label: "Set up and start the daemon", cmd: buildSetupCommand() },
+    ],
+    [],
+  );
+
   const { data: runtimes = [] } = useQuery(runtimeListOptions(wsId));
 
   const handleDaemonEvent = useCallback(() => {
@@ -73,19 +103,16 @@ export function StepRuntime({
           Connect a Runtime
         </h1>
         <p className="mt-2 text-muted-foreground">
-          Install the CLI and run{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm">
-            multica setup
-          </code>{" "}
-          to connect your machine. The daemon auto-detects agent CLIs (Claude
-          Code, Codex, etc.) on your PATH.
+          Install the CLI and run the setup command below to connect your
+          machine. The daemon auto-detects agent CLIs (Claude Code, Codex,
+          etc.) on your PATH.
         </p>
       </div>
 
       {/* Commands */}
       <Card className="w-full">
         <CardContent className="space-y-3 pt-4">
-          {SETUP_STEPS.map((step, i) => (
+          {setupSteps.map((step, i) => (
             <div key={i}>
               <p className="mb-1.5 text-xs text-muted-foreground">
                 {i + 1}. {step.label}
@@ -100,11 +127,8 @@ export function StepRuntime({
             </div>
           ))}
           <p className="pt-1 text-xs text-muted-foreground">
-            <code className="rounded bg-background px-1 py-0.5 font-mono">
-              multica setup
-            </code>{" "}
-            handles authentication, configuration, and daemon startup. It
-            auto-detects local servers on your network.
+            The setup command handles authentication, configuration, and daemon
+            startup — all in one step.
           </p>
         </CardContent>
       </Card>

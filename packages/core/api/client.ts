@@ -77,6 +77,10 @@ export class ApiClient {
     this.logger = options?.logger ?? noopLogger;
   }
 
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
   setToken(token: string | null) {
     this.token = token;
   }

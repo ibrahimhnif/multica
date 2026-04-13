@@ -62,18 +62,17 @@ curl -fsSL https://raw.githubusercontent.com/multica-ai/multica/main/scripts/ins
 irm https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.ps1 | iex
 ```
 
-安装完成后：
+安装完成后，一条命令完成配置、认证和启动：
 
 ```bash
-multica login          # 认证（打开浏览器）
-multica daemon start   # 启动本地 Agent 运行时
-multica daemon stop    # 停止 daemon
+multica setup          # 连接 Multica Cloud，登录，启动 daemon
 ```
 
-> **自部署？** 加上 `--local` 在本地部署完整的 Multica 服务：
+> **自部署？** 加上 `--with-server` 在本地部署完整的 Multica 服务：
 >
 > ```bash
-> curl -fsSL https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.sh | bash -s -- --local
+> curl -fsSL https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.sh | bash -s -- --with-server
+> multica setup self-host
 > ```
 >
 > 需要 Docker。详见 [自部署指南](SELF_HOSTING.md)。
@@ -84,11 +83,10 @@ multica daemon stop    # 停止 daemon
 
 安装好 CLI（或注册 [Multica 云服务](https://multica.ai)）后，按以下步骤将第一个任务分配给 Agent：
 
-### 1. 登录并启动 daemon
+### 1. 配置并启动 daemon
 
 ```bash
-multica login           # 使用你的 Multica 账号认证
-multica daemon start    # 启动本地 Agent 运行时
+multica setup           # 配置、认证、启动 daemon（一条命令搞定）
 ```
 
 daemon 在后台运行，保持你的机器与 Multica 的连接。它会自动检测 PATH 中可用的 Agent CLI（`claude`、`codex`、`openclaw`、`opencode`）。

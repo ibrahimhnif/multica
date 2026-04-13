@@ -156,9 +156,11 @@ multica config set server_url wss://api.example.com/ws
 Profiles let you run multiple daemons on the same machine — for example, one for production and one for a staging server.
 
 ```bash
-# Start a daemon for the staging server
-multica --profile staging login
-multica --profile staging daemon start
+# Set up a staging profile
+multica setup self-host --profile staging --server-url https://api-staging.example.com --app-url https://staging.example.com
+
+# Start its daemon
+multica daemon start --profile staging
 
 # Default profile runs separately
 multica daemon start
