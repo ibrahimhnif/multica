@@ -174,6 +174,52 @@ func TestSubscriberAPI(t *testing.T) {
 		}
 	})
 
+	t.Run("SubscribeCrossWorkspaceUser", func(t *testing.T) {
+		issueID := createIssue(t)
+		defer deleteIssue(t, issueID)
+
+		foreignUserID := "00000000-0000-0000-0000-000000000099"
+		w := httptest.NewRecorder()
+		req := newRequest("POST", "/api/issues/"+issueID+"/subscribe", map[string]any{
+			"user_id":   foreignUserID,
+			"user_type": "member",
+		})
+		req = withURLParam(req, "id", issueID)
+		testHandler.SubscribeToIssue(w, req)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("SubscribeToIssue with cross-workspace user: expected 403, got %d: %s", w.Code, w.Body.String())
+		}
+
+		subscribed, err := testHandler.Queries.IsIssueSubscriber(ctx, db.IsIssueSubscriberParams{
+			IssueID:  parseUUID(issueID),
+			UserType: "member",
+			UserID:   parseUUID(foreignUserID),
+		})
+		if err != nil {
+			t.Fatalf("IsIssueSubscriber: %v", err)
+		}
+		if subscribed {
+			t.Fatal("cross-workspace user should NOT be subscribed in DB")
+		}
+	})
+
+	t.Run("UnsubscribeCrossWorkspaceUser", func(t *testing.T) {
+		issueID := createIssue(t)
+		defer deleteIssue(t, issueID)
+
+		foreignUserID := "00000000-0000-0000-0000-000000000099"
+		w := httptest.NewRecorder()
+		req := newRequest("POST", "/api/issues/"+issueID+"/unsubscribe", map[string]any{
+			"user_id":   foreignUserID,
+			"user_type": "member",
+		})
+		req = withURLParam(req, "id", issueID)
+		testHandler.UnsubscribeFromIssue(w, req)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("UnsubscribeFromIssue with cross-workspace user: expected 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
 	t.Run("ListAfterUnsubscribe", func(t *testing.T) {
 		issueID := createIssue(t)
 		defer deleteIssue(t, issueID)

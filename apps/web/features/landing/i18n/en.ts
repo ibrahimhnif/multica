@@ -107,7 +107,7 @@ export const en: LandingDict = {
         {
           title: "Auto-detection & plug-and-play",
           description:
-            "Multica detects available CLIs like Claude Code and Codex automatically. Connect a machine, and it\u2019s ready to work.",
+            "Multica detects available CLIs like Claude Code, Codex, OpenClaw, and OpenCode automatically. Connect a machine, and it\u2019s ready to work.",
         },
       ],
     },
@@ -126,7 +126,7 @@ export const en: LandingDict = {
       {
         title: "Install the CLI & connect your machine",
         description:
-          "Run multica login to authenticate, then multica daemon start. The daemon auto-detects Claude Code and Codex on your machine \u2014 plug in and go.",
+          "Run multica setup to configure, authenticate, and start the daemon. It auto-detects Claude Code, Codex, OpenClaw, and OpenCode on your machine \u2014 plug in and go.",
       },
       {
         title: "Create your first agent",
@@ -181,7 +181,7 @@ export const en: LandingDict = {
       {
         question: "What coding agents does Multica support?",
         answer:
-          "Multica currently supports Claude Code, OpenAI Codex, Google Gemini, and Copilot CLI out of the box. The daemon auto-detects whichever CLIs you have installed. More backends are on the roadmap \u2014 and since it\u2019s open source, you can add your own.",
+          "Multica currently supports Claude Code, Codex, Gemini CLI, OpenClaw, OpenCode, and Copilot CLI out of the box. The daemon auto-detects whichever CLIs you have installed. Since it\u2019s open source, you can also add your own backends.",
       },
       {
         question: "Do I need to self-host, or is there a cloud version?",
@@ -190,7 +190,7 @@ export const en: LandingDict = {
       },
       {
         question:
-          "How is this different from just using Claude Code, Codex, Gemini, or Copilot CLI directly?",
+          "How is this different from just using coding agents directly?",
         answer:
           "Coding agents are great at executing. Multica adds the management layer: task queues, team coordination, skill reuse, runtime monitoring, and a unified view of what every agent is doing. Think of it as the project manager for your agents.",
       },
@@ -230,7 +230,7 @@ export const en: LandingDict = {
         links: [
           { label: "Documentation", href: githubUrl },
           { label: "API", href: githubUrl },
-          { label: "Community", href: githubUrl },
+          { label: "X (Twitter)", href: "https://x.com/MulticaAI" },
         ],
       },
       company: {
@@ -271,9 +271,206 @@ export const en: LandingDict = {
   changelog: {
     title: "Changelog",
     subtitle: "New updates and improvements to Multica.",
+    categories: {
+      features: "New Features",
+      improvements: "Improvements",
+      fixes: "Bug Fixes",
+    },
     entries: [
       {
-        version: "0.1.9",
+        version: "0.2.0",
+        date: "2026-04-15",
+        title: "Desktop App, Autopilot & Invitations",
+        changes: [],
+        features: [
+          "Desktop app for macOS — native Electron app with tab system, built-in daemon management, immersive mode, and auto-update",
+          "Autopilot — scheduled and triggered automations for AI agents",
+          "Workspace invitations with email notifications and dedicated accept page",
+          "Custom CLI arguments per agent for advanced runtime configuration",
+          "Chat redesign with unread tracking and improved session management",
+          "Create Agent dialog shows runtime owner with Mine/All filter",
+        ],
+        improvements: [
+          "Inter font with CJK fallback and automatic CJK+Latin spacing",
+          "Sidebar user menu redesigned as full-row popover",
+          "WebSocket ping/pong heartbeat to detect dead connections",
+          "Members can now create agents and manage their own skills",
+        ],
+        fixes: [
+          "Agent now triggered on reply in threads where it already participated",
+          "Self-hosting: local uploads persist in Docker, WebSocket URL auto-derived for LAN access",
+          "Stale cmd+k recent issues resolved",
+        ],
+      },
+      {
+        version: "0.1.33",
+        date: "2026-04-14",
+        title: "Gemini CLI & Agent Env Vars",
+        changes: [],
+        features: [
+          "Google Gemini CLI as a new agent runtime with live log streaming",
+          "Custom environment variables for agents (router/proxy mode) with dedicated settings tab",
+          "\"Set parent issue\" and \"Add sub-issue\" actions in issue context menu",
+          "CLI `--parent` flag for issue update and `--content-stdin` for piping comment content",
+          "Sub-issues inherit parent project automatically",
+        ],
+        improvements: [
+          "Editor bubble menu and link preview rewritten for reliability",
+          "OpenClaw backend P0+P1 improvements (multi-line JSON, incremental parsing)",
+          "Self-hosted WebSocket URL auto-derived for LAN access",
+        ],
+        fixes: [
+          "S3 upload keys scoped by workspace (security)",
+          "Workspace membership validation for subscriptions and uploads (security)",
+          "Active tasks auto-cancelled when issue status changes to cancelled",
+          "Agent task stall when process hangs on stdout",
+          "Daemon trigger prompt now embeds the actual triggering comment content",
+          "Login and dashboard redirect stability improvements",
+        ],
+      },
+      {
+        version: "0.1.28",
+        date: "2026-04-13",
+        title: "Windows Support, Auth & Onboarding",
+        changes: [],
+        features: [
+          "Windows support — CLI installation, daemon, and release builds",
+          "Auth migrated to HttpOnly Cookie with WebSocket Origin whitelist",
+          "Full-screen onboarding wizard for new workspaces",
+          "Resizable Master Agent chat window with session history improvements",
+          "Token usage log scanning for OpenCode, OpenClaw, and Hermes runtimes",
+        ],
+        fixes: [
+          "WebSocket first-message authentication security fix",
+          "Content-Security-Policy response header",
+          "Sub-issue progress computed from database instead of paginated client cache",
+        ],
+      },
+      {
+        version: "0.1.27",
+        date: "2026-04-12",
+        title: "One-Click Setup, Self-Hosting & Stability",
+        changes: [],
+        features: [
+          "One-click install & setup — `curl | bash` installs CLI, `--with-server` bootstraps full self-hosting, `multica setup` configures your environment",
+          "Self-hosted storage — local file fallback when S3 is unavailable, plus custom S3 endpoint support (MinIO)",
+          "Inline property editing (priority, status, lead) on project list page",
+        ],
+        improvements: [
+          "Stale agent tasks auto-swept; agent live card shows immediately without waiting for first message",
+          "Comment attachments uploaded via CLI now visible in the UI",
+          "Pinned items scoped per user with fixed sidebar pin action",
+        ],
+        fixes: [
+          "Workspace ownership checks on daemon API routes and attachment uploads",
+          "Markdown sanitizer preserves code blocks from HTML entity escaping",
+          "Next.js upgraded to ^16.2.3 for CVE-2026-23869",
+          "OpenClaw backend rewritten to match actual CLI interface",
+        ],
+      },
+      {
+        version: "0.1.24",
+        date: "2026-04-11",
+        title: "Security & Notifications",
+        changes: [],
+        features: [
+          "Parent issue subscribers notified on sub-issue changes",
+          "CLI `--project` filter for issue list",
+        ],
+        improvements: [
+          "Meta-skill workflow defers to agent Skills instead of hardcoded logic",
+        ],
+        fixes: [
+          "Workspace ownership checks on all daemon API routes",
+          "Workspace ownership validation for attachment uploads and queries",
+          "Reply mentions no longer inherit parent thread's agent mentions",
+          "Agent comment creation missing workspace ID",
+          "Self-hosting Docker build failures (file permissions, CRLF, missing deps)",
+        ],
+      },
+      {
+        version: "0.1.23",
+        date: "2026-04-11",
+        title: "Pinning, Cmd+K & Projects",
+        changes: [],
+        features: [
+          "Pin issues and projects to sidebar with drag-and-drop reordering",
+          "Cmd+K command palette — recent issues, page navigation, and project search",
+          "Project detail sidebar with properties panel (replaces overview tab)",
+          "Project filter in Issues tab",
+          "Project completion progress in project list",
+          "Auto-fill project when creating issue via 'C' shortcut on project page",
+          "Assignee dropdown sorted by user's assignment frequency",
+        ],
+        fixes: [
+          "Markdown XSS — sanitize HTML rendering in comments with rehype-sanitize and server-side bluemonday",
+          "Project kanban issue counts incorrect",
+          "Self-hosting Docker build missing tsconfig dependencies",
+          "Cmd+K requiring double ESC to close",
+        ],
+      },
+      {
+        version: "0.1.22",
+        date: "2026-04-10",
+        title: "Self-Hosting, ACP & Documentation",
+        changes: [],
+        features: [
+          "Full-stack Docker Compose for one-command self-hosting",
+          "Hermes Agent Provider via ACP protocol",
+          "Documentation site with Fumadocs (Getting Started, CLI reference, Agents guide)",
+          "Mobile-responsive sidebar and inbox layout",
+          "Token usage display per issue in the detail sidebar",
+          "Switch agent runtime from the UI",
+          "'C' keyboard shortcut for quick issue creation",
+          "Chat session history panel for archived conversations",
+          "Minimum CLI version check in daemon for Claude Code and Codex",
+          "OpenClaw and OpenCode added to landing page",
+          "`make dev` one-command local development setup",
+        ],
+        improvements: [
+          "Sidebar redesign — Personal / Workspace grouping, user profile footer, ⌘K search input",
+          "Search ranking — case-insensitive matching, identifier search (MUL-123), multi-word support",
+          "Search result keyword highlighting",
+          "Daily token usage chart with cleaner Y-axis and per-category tooltip",
+          "Master Agent multiline input support",
+          "Unified picker components (Status, Priority, DueDate, Project, Assignee) across all views",
+          "Workspace-scoped storage isolation with auto-rehydration on switch",
+          "Startup warnings for missing env vars in self-hosted deployments",
+        ],
+        fixes: [
+          "Sub-issue deletion not invalidating parent's children cache",
+          "Search index compatibility with pg_bigm 1.2 on RDS",
+          "Create Agent showing \"No runtime available\" when runtimes exist",
+          "Claude stream-json startup hangs",
+          "Multiple agents unable to queue tasks for the same issue",
+          "Logout not clearing workspace and query cache",
+          "Drag-drop overlay too small on empty editors",
+          "Skills import hardcoding \"main\" as default branch",
+          "PAT authentication not working on WebSocket endpoint",
+          "Runtime deletion blocked when all bound agents are archived",
+        ],
+      },
+      {
+        version: "0.1.21",
+        date: "2026-04-09",
+        title: "Projects, Search & Monorepo",
+        changes: [
+          "Project entity with full-stack CRUD — create, edit, and organize issues by project",
+          "Project picker in the create-issue modal and CLI project commands",
+          "Full-text search for issues with pg_bigm",
+          "Monorepo extraction — shared packages for core, UI, and views (Turborepo)",
+          "Fullscreen agent execution transcript view",
+          "Drag-and-drop file upload with file card display in the editor",
+          "Attachment section with image grid and file cards on issues",
+          "Runtime owner tracking, filtering, avatar display, and point-to-point update notifications",
+          "Sub-issue progress indicator in list view rows",
+          "Done issue pagination in list view",
+          "Codex session log scan for token usage reporting",
+          "Daemon repo-cache fix for stale initial snapshots",
+        ],
+      },
+      {
+        version: "0.1.20",
         date: "2026-04-08",
         title: "Sub-Issues, TanStack Query & Usage Tracking",
         changes: [
@@ -291,7 +488,7 @@ export const en: LandingDict = {
         ],
       },
       {
-        version: "0.1.8",
+        version: "0.1.18",
         date: "2026-04-07",
         title: "OAuth, OpenClaw & Issue Loading",
         changes: [
@@ -306,7 +503,7 @@ export const en: LandingDict = {
         ],
       },
       {
-        version: "0.1.7",
+        version: "0.1.17",
         date: "2026-04-05",
         title: "Comment Pagination & CLI Polish",
         changes: [
@@ -320,7 +517,7 @@ export const en: LandingDict = {
         ],
       },
       {
-        version: "0.1.6",
+        version: "0.1.15",
         date: "2026-04-03",
         title: "Editor Overhaul & Agent Lifecycle",
         changes: [
@@ -336,7 +533,7 @@ export const en: LandingDict = {
         ],
       },
       {
-        version: "0.1.5",
+        version: "0.1.14",
         date: "2026-04-02",
         title: "Mentions & Permissions",
         changes: [
@@ -353,7 +550,7 @@ export const en: LandingDict = {
         ],
       },
       {
-        version: "0.1.4",
+        version: "0.1.13",
         date: "2026-04-01",
         title: "My Issues & i18n",
         changes: [

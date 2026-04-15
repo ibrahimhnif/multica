@@ -76,6 +76,12 @@ func (h *Handler) SubscribeToIssue(w http.ResponseWriter, r *http.Request) {
 		targetUserType = *req.UserType
 	}
 
+	workspaceID := uuidToString(issue.WorkspaceID)
+	if !h.isWorkspaceEntity(r.Context(), targetUserType, targetUserID, workspaceID) {
+		writeError(w, http.StatusForbidden, "target user is not a member of this workspace")
+		return
+	}
+
 	err := h.Queries.AddIssueSubscriber(r.Context(), db.AddIssueSubscriberParams{
 		IssueID:  issue.ID,
 		UserType: targetUserType,
@@ -87,7 +93,6 @@ func (h *Handler) SubscribeToIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workspaceID := uuidToString(issue.WorkspaceID)
 	callerID := requestUserID(r)
 	subActorType, subActorID := h.resolveActor(r, callerID, workspaceID)
 	h.publish(protocol.EventSubscriberAdded, workspaceID, subActorType, subActorID, map[string]any{
@@ -125,6 +130,12 @@ func (h *Handler) UnsubscribeFromIssue(w http.ResponseWriter, r *http.Request) {
 		targetUserType = *req.UserType
 	}
 
+	workspaceID := uuidToString(issue.WorkspaceID)
+	if !h.isWorkspaceEntity(r.Context(), targetUserType, targetUserID, workspaceID) {
+		writeError(w, http.StatusForbidden, "target user is not a member of this workspace")
+		return
+	}
+
 	err := h.Queries.RemoveIssueSubscriber(r.Context(), db.RemoveIssueSubscriberParams{
 		IssueID:  issue.ID,
 		UserType: targetUserType,
@@ -135,7 +146,6 @@ func (h *Handler) UnsubscribeFromIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workspaceID := uuidToString(issue.WorkspaceID)
 	callerID := requestUserID(r)
 	unsubActorType, unsubActorID := h.resolveActor(r, callerID, workspaceID)
 	h.publish(protocol.EventSubscriberRemoved, workspaceID, unsubActorType, unsubActorID, map[string]any{

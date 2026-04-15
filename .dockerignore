@@ -1,12 +1,38 @@
-.git
-.github
+# Dependencies
 node_modules
-apps/web/node_modules
-apps/web/.next
-apps/web/out
+.pnpm-store
+
+# Build outputs
+.next
 dist
-*.log
+server/bin
+server/tmp
+
+# Git
+.git
+.gitignore
+
+# Environment
 .env
 .env.*
-.eslintcache
-.goreleaser.yml
+!.env.example
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+e2e/test-results
+coverage
+
+# Docs
+docs/
+
+# Desktop app (not needed for web self-hosting)
+apps/desktop

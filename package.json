@@ -4,17 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev:web": "pnpm --filter @multica/web dev",
-    "build": "pnpm --filter @multica/web build",
-    "typecheck": "pnpm --filter @multica/web typecheck",
-    "test": "pnpm --filter @multica/web test",
-    "lint": "pnpm --filter @multica/web lint",
-    "clean": "pnpm --filter @multica/web clean && rm -rf node_modules"
+    "dev:web": "turbo dev --filter=@multica/web",
+    "dev:desktop": "turbo dev --filter=@multica/desktop",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "clean": "turbo clean && rm -rf node_modules",
+    "ui:add": "cd packages/ui && npx shadcn@latest add"
   },
   "packageManager": "pnpm@10.28.2",
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild"
+      "esbuild",
+      "electron"
     ],
     "overrides": {
       "@types/react": "catalog:",
@@ -26,6 +29,7 @@
     "@types/node": "catalog:",
     "@types/pg": "^8.20.0",
     "pg": "^8.20.0",
+    "turbo": "^2.5.4",
     "typescript": "catalog:"
   }
 }

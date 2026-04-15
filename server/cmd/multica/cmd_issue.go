@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"strings"
@@ -103,6 +104,13 @@ var issueRunMessagesCmd = &cobra.Command{
 	RunE:  runIssueRunMessages,
 }
 
+var issueSearchCmd = &cobra.Command{
+	Use:   "search <query>",
+	Short: "Search issues by title or description",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runIssueSearch,
+}
+
 var validIssueStatuses = []string{
 	"backlog", "todo", "in_progress", "in_review", "done", "blocked", "cancelled",
 }
@@ -117,6 +125,7 @@ func init() {
 	issueCmd.AddCommand(issueCommentCmd)
 	issueCmd.AddCommand(issueRunsCmd)
 	issueCmd.AddCommand(issueRunMessagesCmd)
+	issueCmd.AddCommand(issueSearchCmd)
 
 	issueCommentCmd.AddCommand(issueCommentListCmd)
 	issueCommentCmd.AddCommand(issueCommentAddCmd)
@@ -127,7 +136,9 @@ func init() {
 	issueListCmd.Flags().String("status", "", "Filter by status")
 	issueListCmd.Flags().String("priority", "", "Filter by priority")
 	issueListCmd.Flags().String("assignee", "", "Filter by assignee name")
+	issueListCmd.Flags().String("project", "", "Filter by project ID")
 	issueListCmd.Flags().Int("limit", 50, "Maximum number of issues to return")
+	issueListCmd.Flags().Int("offset", 0, "Number of issues to skip (for pagination)")
 
 	// issue get
 	issueGetCmd.Flags().String("output", "json", "Output format: table or json")
@@ -139,6 +150,7 @@ func init() {
 	issueCreateCmd.Flags().String("priority", "", "Issue priority")
 	issueCreateCmd.Flags().String("assignee", "", "Assignee name (member or agent)")
 	issueCreateCmd.Flags().String("parent", "", "Parent issue ID")
+	issueCreateCmd.Flags().String("project", "", "Project ID")
 	issueCreateCmd.Flags().String("due-date", "", "Due date (RFC3339 format)")
 	issueCreateCmd.Flags().String("output", "json", "Output format: table or json")
 	issueCreateCmd.Flags().StringSlice("attachment", nil, "File path(s) to attach (can be specified multiple times)")
@@ -149,7 +161,9 @@ func init() {
 	issueUpdateCmd.Flags().String("status", "", "New status")
 	issueUpdateCmd.Flags().String("priority", "", "New priority")
 	issueUpdateCmd.Flags().String("assignee", "", "New assignee name (member or agent)")
+	issueUpdateCmd.Flags().String("project", "", "Project ID")
 	issueUpdateCmd.Flags().String("due-date", "", "New due date (RFC3339 format)")
+	issueUpdateCmd.Flags().String("parent", "", "Parent issue ID (use --parent \"\" to clear)")
 	issueUpdateCmd.Flags().String("output", "json", "Output format: table or json")
 
 	// issue status
@@ -174,10 +188,16 @@ func init() {
 	issueRunMessagesCmd.Flags().Int("since", 0, "Only return messages after this sequence number")
 
 	// issue comment add
-	issueCommentAddCmd.Flags().String("content", "", "Comment content (required)")
+	issueCommentAddCmd.Flags().String("content", "", "Comment content (required unless --content-stdin)")
+	issueCommentAddCmd.Flags().Bool("content-stdin", false, "Read comment content from stdin (avoids shell escaping issues)")
 	issueCommentAddCmd.Flags().String("parent", "", "Parent comment ID (reply to a specific comment)")
 	issueCommentAddCmd.Flags().StringSlice("attachment", nil, "File path(s) to attach (can be specified multiple times)")
 	issueCommentAddCmd.Flags().String("output", "json", "Output format: table or json")
+
+	// issue search
+	issueSearchCmd.Flags().Int("limit", 20, "Maximum number of results to return")
+	issueSearchCmd.Flags().Bool("include-closed", false, "Include done and cancelled issues")
+	issueSearchCmd.Flags().String("output", "table", "Output format: table or json")
 }
 
 // ---------------------------------------------------------------------------
@@ -193,10 +213,14 @@ func runIssueList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	params := url.Values{}
-	if client.WorkspaceID != "" {
-		params.Set("workspace_id", client.WorkspaceID)
+	if client.WorkspaceID == "" {
+		if _, err := requireWorkspaceID(cmd); err != nil {
+			return err
+		}
 	}
+
+	params := url.Values{}
+	params.Set("workspace_id", client.WorkspaceID)
 	if v, _ := cmd.Flags().GetString("status"); v != "" {
 		params.Set("status", v)
 	}
@@ -213,6 +237,12 @@ func runIssueList(cmd *cobra.Command, _ []string) error {
 		}
 		params.Set("assignee_id", aID)
 	}
+	if v, _ := cmd.Flags().GetInt("offset"); v > 0 {
+		params.Set("offset", fmt.Sprintf("%d", v))
+	}
+	if v, _ := cmd.Flags().GetString("project"); v != "" {
+		params.Set("project_id", v)
+	}
 
 	path := "/api/issues"
 	if len(params) > 0 {
@@ -228,7 +258,18 @@ func runIssueList(cmd *cobra.Command, _ []string) error {
 
 	output, _ := cmd.Flags().GetString("output")
 	if output == "json" {
-		return cli.PrintJSON(os.Stdout, issuesRaw)
+		total, _ := result["total"].(float64)
+		limit, _ := cmd.Flags().GetInt("limit")
+		offset, _ := cmd.Flags().GetInt("offset")
+		hasMore := offset+len(issuesRaw) < int(total)
+		wrapped := map[string]any{
+			"issues":   issuesRaw,
+			"total":    int(total),
+			"limit":    limit,
+			"offset":   offset,
+			"has_more": hasMore,
+		}
+		return cli.PrintJSON(os.Stdout, wrapped)
 	}
 
 	headers := []string{"ID", "TITLE", "STATUS", "PRIORITY", "ASSIGNEE", "DUE DATE"}
@@ -327,6 +368,9 @@ func runIssueCreate(cmd *cobra.Command, _ []string) error {
 	if v, _ := cmd.Flags().GetString("parent"); v != "" {
 		body["parent_issue_id"] = v
 	}
+	if v, _ := cmd.Flags().GetString("project"); v != "" {
+		body["project_id"] = v
+	}
 	if v, _ := cmd.Flags().GetString("due-date"); v != "" {
 		body["due_date"] = v
 	}
@@ -399,6 +443,10 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 		v, _ := cmd.Flags().GetString("priority")
 		body["priority"] = v
 	}
+	if cmd.Flags().Changed("project") {
+		v, _ := cmd.Flags().GetString("project")
+		body["project_id"] = v
+	}
 	if cmd.Flags().Changed("due-date") {
 		v, _ := cmd.Flags().GetString("due-date")
 		body["due_date"] = v
@@ -411,6 +459,14 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 		}
 		body["assignee_type"] = aType
 		body["assignee_id"] = aID
+	}
+	if cmd.Flags().Changed("parent") {
+		v, _ := cmd.Flags().GetString("parent")
+		if v == "" {
+			body["parent_issue_id"] = nil
+		} else {
+			body["parent_issue_id"] = v
+		}
 	}
 
 	if len(body) == 0 {
@@ -607,8 +663,25 @@ func runIssueCommentList(cmd *cobra.Command, args []string) error {
 
 func runIssueCommentAdd(cmd *cobra.Command, args []string) error {
 	content, _ := cmd.Flags().GetString("content")
+	useStdin, _ := cmd.Flags().GetBool("content-stdin")
+
+	if content != "" && useStdin {
+		return fmt.Errorf("--content and --content-stdin are mutually exclusive")
+	}
+
+	if useStdin {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return fmt.Errorf("read stdin: %w", err)
+		}
+		content = strings.TrimSuffix(string(data), "\n")
+		if content == "" {
+			return fmt.Errorf("stdin content is empty")
+		}
+	}
+
 	if content == "" {
-		return fmt.Errorf("--content is required")
+		return fmt.Errorf("--content or --content-stdin is required")
 	}
 
 	client, err := newAPIClient(cmd)
@@ -776,6 +849,69 @@ func runIssueRunMessages(cmd *cobra.Command, args []string) error {
 			strVal(m, "type"),
 			strVal(m, "tool"),
 			content,
+		})
+	}
+	cli.PrintTable(os.Stdout, headers, rows)
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Search command
+// ---------------------------------------------------------------------------
+
+func runIssueSearch(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	params := url.Values{}
+	params.Set("q", args[0])
+	if v, _ := cmd.Flags().GetInt("limit"); v > 0 {
+		params.Set("limit", fmt.Sprintf("%d", v))
+	}
+	if v, _ := cmd.Flags().GetBool("include-closed"); v {
+		params.Set("include_closed", "true")
+	}
+
+	path := "/api/issues/search?" + params.Encode()
+
+	var result map[string]any
+	if err := client.GetJSON(ctx, path, &result); err != nil {
+		return fmt.Errorf("search issues: %w", err)
+	}
+
+	issuesRaw, _ := result["issues"].([]any)
+
+	output, _ := cmd.Flags().GetString("output")
+	if output == "json" {
+		return cli.PrintJSON(os.Stdout, result)
+	}
+
+	headers := []string{"ID", "IDENTIFIER", "TITLE", "STATUS", "MATCH"}
+	rows := make([][]string, 0, len(issuesRaw))
+	for _, raw := range issuesRaw {
+		issue, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		matchInfo := strVal(issue, "match_source")
+		if snippet := strVal(issue, "matched_snippet"); snippet != "" {
+			if utf8.RuneCountInString(snippet) > 50 {
+				runes := []rune(snippet)
+				snippet = string(runes[:47]) + "..."
+			}
+			matchInfo += ": " + snippet
+		}
+		rows = append(rows, []string{
+			truncateID(strVal(issue, "id")),
+			strVal(issue, "identifier"),
+			strVal(issue, "title"),
+			strVal(issue, "status"),
+			matchInfo,
 		})
 	}
 	cli.PrintTable(os.Stdout, headers, rows)

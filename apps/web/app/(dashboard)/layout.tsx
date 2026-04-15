@@ -1,57 +1,20 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter, usePathname } from "next/navigation";
-import { MulticaIcon } from "@/components/multica-icon";
-import { useNavigationStore } from "@/features/navigation";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import { useAuthStore } from "@/features/auth";
-import { useWorkspaceStore } from "@/features/workspace";
-import { AppSidebar } from "./_components/app-sidebar";
+import { DashboardLayout } from "@multica/views/layout";
+import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
+import { SearchCommand, SearchTrigger } from "@multica/views/search";
+import { ChatFab, ChatWindow } from "@multica/views/chat";
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const user = useAuthStore((s) => s.user);
-  const isLoading = useAuthStore((s) => s.isLoading);
-  const workspace = useWorkspaceStore((s) => s.workspace);
-
-  useEffect(() => {
-    if (!isLoading && !user) {
-      router.push("/");
-    }
-  }, [user, isLoading, router]);
-
-  useEffect(() => {
-    useNavigationStore.getState().onPathChange(pathname);
-  }, [pathname]);
-
-  if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <MulticaIcon className="size-6" />
-      </div>
-    );
-  }
-
-  if (!user) return null;
-
+export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <SidebarProvider className="h-svh">
-      <AppSidebar />
-      <SidebarInset className="overflow-hidden">
-        {workspace ? (
-          children
-        ) : (
-          <div className="flex flex-1 items-center justify-center">
-            <MulticaIcon className="size-6 animate-pulse" />
-          </div>
-        )}
-      </SidebarInset>
-    </SidebarProvider>
+    <DashboardLayout
+      loadingIndicator={<MulticaIcon className="size-6" />}
+      searchSlot={<SearchTrigger />}
+      extra={<><SearchCommand /><ChatWindow /><ChatFab /></>}
+      onboardingPath="/onboarding"
+      loginPath="/login"
+    >
+      {children}
+    </DashboardLayout>
   );
 }

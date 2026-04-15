@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strings"
 	"time"
 )
 
-// geminiBackend implements Backend by spawning the Gemini CLI
-// with --output-format stream-json.
+// geminiBackend implements Backend by spawning the Google Gemini CLI
+// with `--output-format stream-json` and parsing its NDJSON event stream.
 type geminiBackend struct {
 	cfg Config
 }
@@ -31,16 +32,11 @@ func (b *geminiBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 	}
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 
-	args := []string{
-		"--prompt", prompt,
-		"--output-format", "stream-json",
-		"--approval-mode", "yolo",
-	}
-	if opts.Model != "" {
-		args = append(args, "--model", opts.Model)
-	}
+	args := buildGeminiArgs(prompt, opts, b.cfg.Logger)
 
 	cmd := exec.CommandContext(runCtx, execPath, args...)
+	b.cfg.Logger.Debug("agent command", "exec", execPath, "args", args)
+	cmd.WaitDelay = 10 * time.Second
 	if opts.Cwd != "" {
 		cmd.Dir = opts.Cwd
 	}
@@ -50,11 +46,6 @@ func (b *geminiBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("gemini stdout pipe: %w", err)
-	}
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("gemini stdin pipe: %w", err)
 	}
 	cmd.Stderr = newLogWriter(b.cfg.Logger, "[gemini:stderr] ")
 
@@ -68,11 +59,16 @@ func (b *geminiBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 	msgCh := make(chan Message, 256)
 	resCh := make(chan Result, 1)
 
+	// Close stdout when the context is cancelled so scanner.Scan() unblocks.
+	go func() {
+		<-runCtx.Done()
+		_ = stdout.Close()
+	}()
+
 	go func() {
 		defer cancel()
 		defer close(msgCh)
 		defer close(resCh)
-		defer stdin.Close()
 
 		startTime := time.Now()
 		var output strings.Builder
@@ -86,66 +82,63 @@ func (b *geminiBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
-			if line == "" || !strings.HasPrefix(line, "{") {
+			if line == "" {
 				continue
 			}
 
-			var msg geminiSDKMessage
-			if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			var evt geminiStreamEvent
+			if err := json.Unmarshal([]byte(line), &evt); err != nil {
 				continue
 			}
 
-			if msg.SessionID != "" {
-				sessionID = msg.SessionID
-			}
+			switch evt.Type {
+			case "init":
+				sessionID = evt.SessionID
+				trySend(msgCh, Message{Type: MessageStatus, Status: "running"})
 
-			switch msg.Type {
 			case "message":
-				if msg.Role == "assistant" && msg.Content != "" {
-					output.WriteString(msg.Content)
-					trySend(msgCh, Message{Type: MessageText, Content: msg.Content})
+				if evt.Role == "assistant" && evt.Content != "" {
+					output.WriteString(evt.Content)
+					trySend(msgCh, Message{Type: MessageText, Content: evt.Content})
 				}
-			case "thought":
-				if msg.Content != "" {
-					trySend(msgCh, Message{Type: MessageThinking, Content: msg.Content})
-				}
+
 			case "tool_use":
+				var params map[string]any
+				if evt.Parameters != nil {
+					_ = json.Unmarshal(evt.Parameters, &params)
+				}
 				trySend(msgCh, Message{
 					Type:   MessageToolUse,
-					Tool:   msg.ToolName,
-					CallID: msg.ToolID,
-					Input:  msg.Parameters,
+					Tool:   evt.ToolName,
+					CallID: evt.ToolID,
+					Input:  params,
 				})
+
 			case "tool_result":
 				trySend(msgCh, Message{
 					Type:   MessageToolResult,
-					CallID: msg.ToolID,
-					Output: msg.Output,
+					CallID: evt.ToolID,
+					Output: evt.Output,
 				})
-			case "status":
-				trySend(msgCh, Message{Type: MessageStatus, Status: msg.Status})
+
+			case "error":
+				trySend(msgCh, Message{
+					Type:    MessageError,
+					Content: evt.Message,
+				})
+
 			case "result":
-				if msg.Status == "error" || msg.Status == "fail" {
+				if evt.Status == "error" && evt.Error != nil {
 					finalStatus = "failed"
+					finalError = evt.Error.Message
 				}
-				// Use the final response if available (especially if streaming didn't happen)
-				if msg.Response != "" && output.Len() == 0 {
-					output.WriteString(msg.Response)
-				}
-				if msg.Stats != nil {
-					for modelName, stats := range msg.Stats.Models {
-						u := usage[modelName]
-						u.InputTokens += stats.InputTokens
-						u.OutputTokens += stats.OutputTokens
-						u.CacheReadTokens += stats.Cached
-						usage[modelName] = u
-					}
+				if evt.Stats != nil {
+					b.accumulateUsage(usage, evt.Stats)
 				}
 			}
 		}
 
-		// Wait for process exit
-		exitErr := cmd.Wait()
+		waitErr := cmd.Wait()
 		duration := time.Since(startTime)
 
 		if runCtx.Err() == context.DeadlineExceeded {
@@ -154,9 +147,9 @@ func (b *geminiBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 		} else if runCtx.Err() == context.Canceled {
 			finalStatus = "aborted"
 			finalError = "execution cancelled"
-		} else if exitErr != nil && finalStatus == "completed" {
+		} else if waitErr != nil && finalStatus == "completed" {
 			finalStatus = "failed"
-			finalError = fmt.Sprintf("gemini exited with error: %v", exitErr)
+			finalError = fmt.Sprintf("gemini exited with error: %v", waitErr)
 		}
 
 		b.cfg.Logger.Info("gemini finished", "pid", cmd.Process.Pid, "status", finalStatus, "duration", duration.Round(time.Millisecond).String())
@@ -174,39 +167,100 @@ func (b *geminiBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 	return &Session{Messages: msgCh, Result: resCh}, nil
 }
 
-// ── Gemini SDK JSON types ──
+// accumulateUsage extracts per-model token usage from Gemini's result stats.
+func (b *geminiBackend) accumulateUsage(usage map[string]TokenUsage, stats *geminiStreamStats) {
+	for model, m := range stats.Models {
+		u := usage[model]
+		u.InputTokens += int64(m.InputTokens)
+		u.OutputTokens += int64(m.OutputTokens)
+		u.CacheReadTokens += int64(m.Cached)
+		usage[model] = u
+	}
+}
 
-type geminiSDKMessage struct {
-	Type      string `json:"type"`
-	SessionID string `json:"session_id,omitempty"`
+// ── Gemini stream-json event types ──
 
-	// message/thought fields
+type geminiStreamEvent struct {
+	Type      string          `json:"type"`
+	Timestamp string          `json:"timestamp,omitempty"`
+	SessionID string          `json:"session_id,omitempty"`
+	Model     string          `json:"model,omitempty"`
+
+	// message fields
 	Role    string `json:"role,omitempty"`
 	Content string `json:"content,omitempty"`
 	Delta   bool   `json:"delta,omitempty"`
 
 	// tool_use fields
-	ToolName   string         `json:"tool_name,omitempty"`
-	ToolID     string         `json:"tool_id,omitempty"`
-	Parameters map[string]any `json:"parameters,omitempty"`
+	ToolName   string          `json:"tool_name,omitempty"`
+	ToolID     string          `json:"tool_id,omitempty"`
+	Parameters json.RawMessage `json:"parameters,omitempty"`
 
 	// tool_result fields
+	Status string `json:"status,omitempty"`
 	Output string `json:"output,omitempty"`
 
-	// status fields
-	Status string `json:"status,omitempty"`
+	// error fields
+	Severity string `json:"severity,omitempty"`
+	Message  string `json:"message,omitempty"`
 
 	// result fields
-	Response string       `json:"response,omitempty"`
-	Stats    *geminiStats `json:"stats,omitempty"`
+	Error *geminiStreamError `json:"error,omitempty"`
+	Stats *geminiStreamStats `json:"stats,omitempty"`
 }
 
-type geminiStats struct {
-	Models map[string]geminiModelStats `json:"models"`
+type geminiStreamError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}
+
+type geminiStreamStats struct {
+	TotalTokens  int                          `json:"total_tokens"`
+	InputTokens  int                          `json:"input_tokens"`
+	OutputTokens int                          `json:"output_tokens"`
+	DurationMs   int                          `json:"duration_ms"`
+	ToolCalls    int                          `json:"tool_calls"`
+	Models       map[string]geminiModelStats  `json:"models,omitempty"`
 }
 
 type geminiModelStats struct {
-	InputTokens  int64 `json:"input_tokens"`
-	OutputTokens int64 `json:"output_tokens"`
-	Cached       int64 `json:"cached"`
+	TotalTokens  int `json:"total_tokens"`
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	Cached       int `json:"cached"`
+}
+
+// ── Arg builder ──
+
+// buildGeminiArgs assembles the argv for a one-shot gemini invocation.
+//
+// Flags:
+//
+//	-p / --prompt         non-interactive prompt (the user's task)
+//	--yolo                auto-approve all tool executions
+//	-o stream-json        streaming NDJSON output for live events
+//	-m <model>            optional model override
+//	-r <session>          resume a previous session (if provided)
+// geminiBlockedArgs are flags hardcoded by the daemon that must not be
+// overridden by user-configured custom_args.
+var geminiBlockedArgs = map[string]blockedArgMode{
+	"-p":     blockedWithValue,  // non-interactive prompt
+	"--yolo": blockedStandalone, // auto-approve tool use
+	"-o":     blockedWithValue,  // stream-json output format
+}
+
+func buildGeminiArgs(prompt string, opts ExecOptions, logger *slog.Logger) []string {
+	args := []string{
+		"-p", prompt,
+		"--yolo",
+		"-o", "stream-json",
+	}
+	if opts.Model != "" {
+		args = append(args, "-m", opts.Model)
+	}
+	if opts.ResumeSessionID != "" {
+		args = append(args, "-r", opts.ResumeSessionID)
+	}
+	args = append(args, filterCustomArgs(opts.CustomArgs, geminiBlockedArgs, logger)...)
+	return args
 }

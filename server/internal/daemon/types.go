@@ -32,15 +32,20 @@ type Task struct {
 	Repos          []RepoData `json:"repos,omitempty"`
 	PriorSessionID   string     `json:"prior_session_id,omitempty"`    // Claude session ID from a previous task on this issue
 	PriorWorkDir     string     `json:"prior_work_dir,omitempty"`     // work_dir from a previous task on this issue
-	TriggerCommentID string     `json:"trigger_comment_id,omitempty"` // comment that triggered this task
+	TriggerCommentID      string     `json:"trigger_comment_id,omitempty"`      // comment that triggered this task
+	TriggerCommentContent string     `json:"trigger_comment_content,omitempty"` // content of the triggering comment
+	ChatSessionID         string     `json:"chat_session_id,omitempty"`         // non-empty for chat tasks
+	ChatMessage           string     `json:"chat_message,omitempty"`            // user message content for chat tasks
 }
 
 // AgentData holds agent details returned by the claim endpoint.
 type AgentData struct {
-	ID           string      `json:"id"`
-	Name         string      `json:"name"`
-	Instructions string      `json:"instructions"`
-	Skills       []SkillData `json:"skills"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Instructions string            `json:"instructions"`
+	Skills       []SkillData       `json:"skills"`
+	CustomEnv    map[string]string `json:"custom_env,omitempty"`
+	CustomArgs   []string          `json:"custom_args,omitempty"`
 }
 
 // SkillData represents a structured skill for task execution.
@@ -74,5 +79,6 @@ type TaskResult struct {
 	EnvType    string           `json:"env_type,omitempty"`
 	SessionID  string           `json:"session_id,omitempty"` // Claude session ID for future resumption
 	WorkDir    string           `json:"work_dir,omitempty"`   // working directory used during execution
+	EnvRoot    string           `json:"-"`                    // env root dir for writing GC metadata (not sent to server)
 	Usage      []TaskUsageEntry `json:"usage,omitempty"`      // per-model token usage
 }
