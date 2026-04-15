@@ -1,13 +1,16 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useAuthStore } from "@/features/auth";
+import { useAuthStore } from "@multica/core/auth";
 import { useLocale } from "../i18n";
 import {
   ClaudeCodeLogo,
   CodexLogo,
-  GeminiLogo,
+  GeminiCliLogo,
+  OpenClawLogo,
+  OpenCodeLogo,
   CopilotLogo,
   GitHubMark,
   githubUrl,
@@ -52,6 +55,8 @@ export function LandingHero() {
                 GitHub
               </Link>
             </div>
+
+            <InstallCommand />
           </div>
 
           <div className="mt-10 flex items-center justify-center gap-8">
@@ -67,11 +72,19 @@ export function LandingHero() {
                 <CodexLogo className="size-5" />
                 <span className="text-[15px] font-medium">Codex</span>
               </div>
-              <div className="flex items-center gap-2.5 rounded-full border border-white/8 bg-white/4 py-1.5 pl-2 pr-4 backdrop-blur-md">
-                <GeminiLogo className="size-5" />
-                <span className="text-[15px] font-medium">Gemini</span>
+              <div className="flex items-center gap-2.5 text-white/80">
+                <GeminiCliLogo className="size-5" />
+                <span className="text-[15px] font-medium">Gemini CLI</span>
               </div>
-              <div className="flex items-center gap-2.5 rounded-full border border-white/8 bg-white/4 py-1.5 pl-2 pr-4 backdrop-blur-md">
+              <div className="flex items-center gap-2.5 text-white/80">
+                <OpenClawLogo className="size-5" />
+                <span className="text-[15px] font-medium">OpenClaw</span>
+              </div>
+              <div className="flex items-center gap-2.5 text-white/80">
+                <OpenCodeLogo className="size-5" />
+                <span className="text-[15px] font-medium">OpenCode</span>
+              </div>
+              <div className="flex items-center gap-2.5 text-white/80">
                 <CopilotLogo className="size-5" />
                 <span className="text-[15px] font-medium">Copilot CLI</span>
               </div>
@@ -83,6 +96,64 @@ export function LandingHero() {
           </div>
         </section>
       </main>
+    </div>
+  );
+}
+
+const INSTALL_COMMAND =
+  "curl -fsSL https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.sh | bash";
+
+function InstallCommand() {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(INSTALL_COMMAND);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  return (
+    <div className="mx-auto mt-6 max-w-fit">
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="group flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 font-mono text-[13px] text-white/70 backdrop-blur-sm transition-colors hover:border-white/20 hover:bg-white/8 hover:text-white/90"
+      >
+        <span className="text-white/40">$</span>
+        <span className="select-all">{INSTALL_COMMAND}</span>
+        <span className="ml-1 flex size-5 shrink-0 items-center justify-center text-white/40 transition-colors group-hover:text-white/70">
+          {copied ? (
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="size-3.5 text-green-400"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          ) : (
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="size-3.5"
+            >
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+          )}
+        </span>
+      </button>
     </div>
   );
 }

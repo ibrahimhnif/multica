@@ -1,19 +1,115 @@
 package handler
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/middleware"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 	"github.com/multica-ai/multica/server/pkg/redact"
 )
+
+// ---------------------------------------------------------------------------
+// Daemon workspace ownership helpers
+// ---------------------------------------------------------------------------
+
+// requireDaemonWorkspaceAccess verifies the caller has access to the given workspace.
+// For daemon tokens (mdt_), compares the token's workspace ID directly.
+// For PAT/JWT fallback, verifies user membership in the workspace.
+func (h *Handler) requireDaemonWorkspaceAccess(w http.ResponseWriter, r *http.Request, workspaceID string) bool {
+	if workspaceID == "" {
+		writeError(w, http.StatusNotFound, "not found")
+		return false
+	}
+
+	// Daemon token: workspace must match.
+	if daemonWsID := middleware.DaemonWorkspaceIDFromContext(r.Context()); daemonWsID != "" {
+		if daemonWsID != workspaceID {
+			writeError(w, http.StatusNotFound, "not found")
+			return false
+		}
+		return true
+	}
+
+	// PAT/JWT fallback: verify user is a member of the workspace.
+	_, ok := h.requireWorkspaceMember(w, r, workspaceID, "not found")
+	return ok
+}
+
+// requireDaemonRuntimeAccess looks up a runtime and verifies the caller owns its workspace.
+func (h *Handler) requireDaemonRuntimeAccess(w http.ResponseWriter, r *http.Request, runtimeID string) (db.AgentRuntime, bool) {
+	rt, err := h.Queries.GetAgentRuntime(r.Context(), parseUUID(runtimeID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "runtime not found")
+		return db.AgentRuntime{}, false
+	}
+	if !h.requireDaemonWorkspaceAccess(w, r, uuidToString(rt.WorkspaceID)) {
+		return db.AgentRuntime{}, false
+	}
+	return rt, true
+}
+
+// requireDaemonTaskAccess looks up a task and verifies the caller owns its workspace.
+func (h *Handler) requireDaemonTaskAccess(w http.ResponseWriter, r *http.Request, taskID string) (db.AgentTaskQueue, bool) {
+	task, err := h.Queries.GetAgentTask(r.Context(), parseUUID(taskID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "task not found")
+		return db.AgentTaskQueue{}, false
+	}
+
+	wsID := h.resolveTaskWorkspaceID(r, task)
+	if wsID == "" {
+		writeError(w, http.StatusNotFound, "task not found")
+		return db.AgentTaskQueue{}, false
+	}
+
+	if !h.requireDaemonWorkspaceAccess(w, r, wsID) {
+		return db.AgentTaskQueue{}, false
+	}
+	return task, true
+}
+
+// verifyDaemonWorkspaceAccess checks workspace access without writing an HTTP error.
+// Used in loops where individual items may be skipped silently.
+func (h *Handler) verifyDaemonWorkspaceAccess(r *http.Request, workspaceID string) bool {
+	if workspaceID == "" {
+		return false
+	}
+	if daemonWsID := middleware.DaemonWorkspaceIDFromContext(r.Context()); daemonWsID != "" {
+		return daemonWsID == workspaceID
+	}
+	userID := requestUserID(r)
+	if userID == "" {
+		return false
+	}
+	_, err := h.getWorkspaceMember(r.Context(), userID, workspaceID)
+	return err == nil
+}
+
+// resolveTaskWorkspaceID derives the workspace ID from a task's issue or chat session.
+func (h *Handler) resolveTaskWorkspaceID(r *http.Request, task db.AgentTaskQueue) string {
+	if task.IssueID.Valid {
+		if issue, err := h.Queries.GetIssue(r.Context(), task.IssueID); err == nil {
+			return uuidToString(issue.WorkspaceID)
+		}
+	}
+	if task.ChatSessionID.Valid {
+		if cs, err := h.Queries.GetChatSession(r.Context(), task.ChatSessionID); err == nil {
+			return uuidToString(cs.WorkspaceID)
+		}
+	}
+	return ""
+}
 
 // ---------------------------------------------------------------------------
 // Daemon Registration & Heartbeat
@@ -24,12 +120,77 @@ type DaemonRegisterRequest struct {
 	DaemonID    string `json:"daemon_id"`
 	DeviceName  string `json:"device_name"`
 	CLIVersion  string `json:"cli_version"` // multica CLI version
+	LaunchedBy  string `json:"launched_by"` // "desktop" when spawned by the Electron app
 	Runtimes    []struct {
 		Name    string `json:"name"`
 		Type    string `json:"type"`
 		Version string `json:"version"` // agent CLI version (claude/codex)
 		Status  string `json:"status"`
 	} `json:"runtimes"`
+}
+
+type daemonWorkspaceReposResponse struct {
+	WorkspaceID  string     `json:"workspace_id"`
+	Repos        []RepoData `json:"repos"`
+	ReposVersion string     `json:"repos_version"`
+}
+
+func normalizeWorkspaceRepos(repos []RepoData) []RepoData {
+	if len(repos) == 0 {
+		return []RepoData{}
+	}
+
+	normalized := make([]RepoData, 0, len(repos))
+	seen := make(map[string]struct{}, len(repos))
+	for _, repo := range repos {
+		url := strings.TrimSpace(repo.URL)
+		if url == "" {
+			continue
+		}
+		if _, exists := seen[url]; exists {
+			continue
+		}
+		seen[url] = struct{}{}
+		normalized = append(normalized, RepoData{
+			URL:         url,
+			Description: strings.TrimSpace(repo.Description),
+		})
+	}
+	return normalized
+}
+
+func workspaceReposVersion(repos []RepoData) string {
+	urls := make([]string, 0, len(repos))
+	for _, repo := range repos {
+		if repo.URL == "" {
+			continue
+		}
+		urls = append(urls, repo.URL)
+	}
+	sort.Strings(urls)
+	sum := sha256.Sum256([]byte(strings.Join(urls, "\n")))
+	return hex.EncodeToString(sum[:])
+}
+
+func parseWorkspaceRepos(raw []byte) []RepoData {
+	if len(raw) == 0 {
+		return []RepoData{}
+	}
+
+	var repos []RepoData
+	if err := json.Unmarshal(raw, &repos); err != nil {
+		return []RepoData{}
+	}
+	return normalizeWorkspaceRepos(repos)
+}
+
+func workspaceReposResponse(workspaceID string, raw []byte) daemonWorkspaceReposResponse {
+	repos := parseWorkspaceRepos(raw)
+	return daemonWorkspaceReposResponse{
+		WorkspaceID:  workspaceID,
+		Repos:        repos,
+		ReposVersion: workspaceReposVersion(repos),
+	}
 }
 
 func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
@@ -56,9 +217,23 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the caller is a member of the target workspace.
-	if _, ok := h.requireWorkspaceMember(w, r, req.WorkspaceID, "workspace not found"); !ok {
-		return
+	// Verify workspace access and resolve owner.
+	// Daemon tokens (mdt_) prove workspace access directly; OwnerID will be zero
+	// (the SQL COALESCE preserves any existing owner on upsert).
+	// PAT/JWT tokens require a membership check and set OwnerID from the member.
+	var ownerID pgtype.UUID
+	if daemonWsID := middleware.DaemonWorkspaceIDFromContext(r.Context()); daemonWsID != "" {
+		if daemonWsID != req.WorkspaceID {
+			writeError(w, http.StatusNotFound, "workspace not found")
+			return
+		}
+		// ownerID stays zero — COALESCE keeps the existing owner on upsert.
+	} else {
+		member, ok := h.requireWorkspaceMember(w, r, req.WorkspaceID, "workspace not found")
+		if !ok {
+			return
+		}
+		ownerID = member.UserID
 	}
 
 	ws, err := h.Queries.GetWorkspace(r.Context(), parseUUID(req.WorkspaceID))
@@ -93,6 +268,7 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		metadata, _ := json.Marshal(map[string]any{
 			"version":     runtime.Version,
 			"cli_version": req.CLIVersion,
+			"launched_by": req.LaunchedBy,
 		})
 
 		registered, err := h.Queries.UpsertAgentRuntime(r.Context(), db.UpsertAgentRuntimeParams{
@@ -104,11 +280,34 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			Status:      status,
 			DeviceInfo:  deviceInfo,
 			Metadata:    metadata,
+			OwnerID:     ownerID,
 		})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to register runtime: "+err.Error())
 			return
 		}
+
+		// Migrate agents from old offline runtimes on the same machine to the
+		// newly registered runtime. Uses the runtime's owner_id (preserved via
+		// COALESCE on upsert) so migration works with both PAT and daemon tokens.
+		// Scoped by daemon_id prefix so that only old profile-suffixed runtimes
+		// (e.g. "hostname-staging") from this machine are affected.
+		effectiveOwnerID := registered.OwnerID
+		if effectiveOwnerID.Valid {
+			migrated, err := h.Queries.MigrateAgentsToRuntime(r.Context(), db.MigrateAgentsToRuntimeParams{
+				NewRuntimeID:   registered.ID,
+				WorkspaceID:    parseUUID(req.WorkspaceID),
+				Provider:       provider,
+				OwnerID:        effectiveOwnerID,
+				DaemonIDPrefix: strToText(req.DaemonID),
+			})
+			if err != nil {
+				slog.Warn("failed to migrate agents to new runtime", "runtime_id", uuidToString(registered.ID), "error", err)
+			} else if migrated > 0 {
+				slog.Info("migrated agents to new runtime", "runtime_id", uuidToString(registered.ID), "provider", provider, "migrated_count", migrated)
+			}
+		}
+
 		resp = append(resp, runtimeToResponse(registered))
 	}
 
@@ -118,16 +317,27 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		"runtimes": resp,
 	})
 
-	// Include workspace repos so the daemon can cache them locally.
-	var repos []RepoData
-	if ws.Repos != nil {
-		json.Unmarshal(ws.Repos, &repos)
-	}
-	if repos == nil {
-		repos = []RepoData{}
+	repoResp := workspaceReposResponse(req.WorkspaceID, ws.Repos)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"runtimes":      resp,
+		"repos":         repoResp.Repos,
+		"repos_version": repoResp.ReposVersion,
+	})
+}
+
+func (h *Handler) GetDaemonWorkspaceRepos(w http.ResponseWriter, r *http.Request) {
+	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
+	if !h.requireDaemonWorkspaceAccess(w, r, workspaceID) {
+		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"runtimes": resp, "repos": repos})
+	ws, err := h.Queries.GetWorkspace(r.Context(), parseUUID(workspaceID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "workspace not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, workspaceReposResponse(workspaceID, ws.Repos))
 }
 
 // DaemonDeregister marks runtimes as offline when the daemon shuts down.
@@ -149,10 +359,16 @@ func (h *Handler) DaemonDeregister(w http.ResponseWriter, r *http.Request) {
 	affectedWorkspaces := make(map[string]bool)
 
 	for _, rid := range req.RuntimeIDs {
-		// Look up the runtime to find its workspace.
+		// Look up the runtime and verify ownership.
 		rt, err := h.Queries.GetAgentRuntime(r.Context(), parseUUID(rid))
 		if err != nil {
 			slog.Warn("deregister: runtime not found", "runtime_id", rid, "error", err)
+			continue
+		}
+
+		wsID := uuidToString(rt.WorkspaceID)
+		if !h.verifyDaemonWorkspaceAccess(r, wsID) {
+			slog.Warn("deregister: workspace mismatch", "runtime_id", rid)
 			continue
 		}
 
@@ -161,7 +377,7 @@ func (h *Handler) DaemonDeregister(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		affectedWorkspaces[uuidToString(rt.WorkspaceID)] = true
+		affectedWorkspaces[wsID] = true
 	}
 
 	// Notify frontend clients so they re-fetch runtime list.
@@ -188,6 +404,11 @@ func (h *Handler) DaemonHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 	if req.RuntimeID == "" {
 		writeError(w, http.StatusBadRequest, "runtime_id is required")
+		return
+	}
+
+	// Verify the caller owns this runtime's workspace.
+	if _, ok := h.requireDaemonRuntimeAccess(w, r, req.RuntimeID); !ok {
 		return
 	}
 
@@ -222,6 +443,11 @@ func (h *Handler) DaemonHeartbeat(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 	runtimeID := chi.URLParam(r, "runtimeId")
 
+	// Verify the caller owns this runtime's workspace.
+	if _, ok := h.requireDaemonRuntimeAccess(w, r, runtimeID); !ok {
+		return
+	}
+
 	task, err := h.TaskService.ClaimTaskForRuntime(r.Context(), parseUUID(runtimeID))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to claim task: "+err.Error())
@@ -234,38 +460,94 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build response with fresh agent data (name + skills).
+	// Build response with fresh agent data (name + skills + custom_env + custom_args).
 	resp := taskToResponse(*task)
 	if agent, err := h.Queries.GetAgent(r.Context(), task.AgentID); err == nil {
 		skills := h.TaskService.LoadAgentSkills(r.Context(), task.AgentID)
+		var customEnv map[string]string
+		if agent.CustomEnv != nil {
+			if err := json.Unmarshal(agent.CustomEnv, &customEnv); err != nil {
+				slog.Warn("failed to unmarshal agent custom_env", "agent_id", uuidToString(agent.ID), "error", err)
+			}
+		}
+		var customArgs []string
+		if agent.CustomArgs != nil {
+			if err := json.Unmarshal(agent.CustomArgs, &customArgs); err != nil {
+				slog.Warn("failed to unmarshal agent custom_args", "agent_id", uuidToString(agent.ID), "error", err)
+			}
+		}
 		resp.Agent = &TaskAgentData{
 			ID:           uuidToString(agent.ID),
 			Name:         agent.Name,
 			Instructions: agent.Instructions,
 			Skills:       skills,
+			CustomEnv:    customEnv,
+			CustomArgs:   customArgs,
 		}
 	}
 
 	// Include workspace ID and repos so the daemon can set up worktrees.
-	if issue, err := h.Queries.GetIssue(r.Context(), task.IssueID); err == nil {
-		resp.WorkspaceID = uuidToString(issue.WorkspaceID)
-		if ws, err := h.Queries.GetWorkspace(r.Context(), issue.WorkspaceID); err == nil && ws.Repos != nil {
-			var repos []RepoData
-			if json.Unmarshal(ws.Repos, &repos) == nil && len(repos) > 0 {
-				resp.Repos = repos
+	if task.IssueID.Valid {
+		if issue, err := h.Queries.GetIssue(r.Context(), task.IssueID); err == nil {
+			resp.WorkspaceID = uuidToString(issue.WorkspaceID)
+			if ws, err := h.Queries.GetWorkspace(r.Context(), issue.WorkspaceID); err == nil && ws.Repos != nil {
+				var repos []RepoData
+				if json.Unmarshal(ws.Repos, &repos) == nil && len(repos) > 0 {
+					resp.Repos = repos
+				}
+			}
+		}
+
+		// Fetch the triggering comment content so the daemon can embed it
+		// directly in the agent prompt (prevents the agent from ignoring comments
+		// when stale output files exist in a reused workdir).
+		if task.TriggerCommentID.Valid {
+			if comment, err := h.Queries.GetComment(r.Context(), task.TriggerCommentID); err == nil {
+				resp.TriggerCommentContent = comment.Content
+			}
+		}
+
+		// Look up the prior session for this (agent, issue) pair so the daemon
+		// can resume the Claude Code conversation context.
+		if prior, err := h.Queries.GetLastTaskSession(r.Context(), db.GetLastTaskSessionParams{
+			AgentID: task.AgentID,
+			IssueID: task.IssueID,
+		}); err == nil && prior.SessionID.Valid {
+			resp.PriorSessionID = prior.SessionID.String
+			if prior.WorkDir.Valid {
+				resp.PriorWorkDir = prior.WorkDir.String
 			}
 		}
 	}
 
-	// Look up the prior session for this (agent, issue) pair so the daemon
-	// can resume the Claude Code conversation context.
-	if prior, err := h.Queries.GetLastTaskSession(r.Context(), db.GetLastTaskSessionParams{
-		AgentID: task.AgentID,
-		IssueID: task.IssueID,
-	}); err == nil && prior.SessionID.Valid {
-		resp.PriorSessionID = prior.SessionID.String
-		if prior.WorkDir.Valid {
-			resp.PriorWorkDir = prior.WorkDir.String
+	// Chat task: populate workspace/session info from the chat_session table.
+	if task.ChatSessionID.Valid {
+		if cs, err := h.Queries.GetChatSession(r.Context(), task.ChatSessionID); err == nil {
+			resp.WorkspaceID = uuidToString(cs.WorkspaceID)
+			resp.ChatSessionID = uuidToString(cs.ID)
+			if ws, err := h.Queries.GetWorkspace(r.Context(), cs.WorkspaceID); err == nil && ws.Repos != nil {
+				var repos []RepoData
+				if json.Unmarshal(ws.Repos, &repos) == nil && len(repos) > 0 {
+					resp.Repos = repos
+				}
+			}
+			// Resume from the chat session's persistent session.
+			if cs.SessionID.Valid {
+				resp.PriorSessionID = cs.SessionID.String
+			}
+			if cs.WorkDir.Valid {
+				resp.PriorWorkDir = cs.WorkDir.String
+			}
+			// Load the latest user message for the chat prompt.
+			if msgs, err := h.Queries.ListChatMessages(r.Context(), cs.ID); err == nil && len(msgs) > 0 {
+				// Find the last user message.
+				for i := len(msgs) - 1; i >= 0; i-- {
+					if msgs[i].Role == "user" {
+						resp.ChatMessage = msgs[i].Content
+						break
+					}
+				}
+			}
 		}
 	}
 
@@ -276,6 +558,11 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 // ListPendingTasksByRuntime returns queued/dispatched tasks for a runtime.
 func (h *Handler) ListPendingTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 	runtimeID := chi.URLParam(r, "runtimeId")
+
+	// Verify the caller owns this runtime's workspace.
+	if _, ok := h.requireDaemonRuntimeAccess(w, r, runtimeID); !ok {
+		return
+	}
 
 	tasks, err := h.Queries.ListPendingTasksByRuntime(r.Context(), parseUUID(runtimeID))
 	if err != nil {
@@ -298,6 +585,11 @@ func (h *Handler) ListPendingTasksByRuntime(w http.ResponseWriter, r *http.Reque
 // StartTask marks a dispatched task as running.
 func (h *Handler) StartTask(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")
+
+	// Verify the caller owns this task's workspace.
+	if _, ok := h.requireDaemonTaskAccess(w, r, taskID); !ok {
+		return
+	}
 
 	task, err := h.TaskService.StartTask(r.Context(), parseUUID(taskID))
 	if err != nil {
@@ -326,10 +618,14 @@ func (h *Handler) ReportTaskProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Look up task to get workspace ID via the associated issue.
+	// Verify ownership and resolve workspace ID.
+	task, ok := h.requireDaemonTaskAccess(w, r, taskID)
+	if !ok {
+		return
+	}
+
 	workspaceID := ""
-	task, err := h.Queries.GetAgentTask(r.Context(), parseUUID(taskID))
-	if err == nil {
+	if task.IssueID.Valid {
 		if issue, err := h.Queries.GetIssue(r.Context(), task.IssueID); err == nil {
 			workspaceID = uuidToString(issue.WorkspaceID)
 		}
@@ -349,6 +645,11 @@ type TaskCompleteRequest struct {
 
 func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")
+
+	// Verify the caller owns this task's workspace.
+	if _, ok := h.requireDaemonTaskAccess(w, r, taskID); !ok {
+		return
+	}
 
 	var req TaskCompleteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -382,6 +683,11 @@ type TaskUsagePayload struct {
 func (h *Handler) ReportTaskUsage(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")
 
+	// Verify the caller owns this task's workspace.
+	if _, ok := h.requireDaemonTaskAccess(w, r, taskID); !ok {
+		return
+	}
+
 	var req struct {
 		Usage []TaskUsagePayload `json:"usage"`
 	}
@@ -411,11 +717,13 @@ func (h *Handler) ReportTaskUsage(w http.ResponseWriter, r *http.Request) {
 // Used by the daemon to check whether a task was cancelled mid-execution.
 func (h *Handler) GetTaskStatus(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")
-	task, err := h.Queries.GetAgentTask(r.Context(), parseUUID(taskID))
-	if err != nil {
-		writeError(w, http.StatusNotFound, "task not found")
+
+	// Verify the caller owns this task's workspace.
+	task, ok := h.requireDaemonTaskAccess(w, r, taskID)
+	if !ok {
 		return
 	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": task.Status})
 }
 
@@ -426,6 +734,11 @@ type TaskFailRequest struct {
 
 func (h *Handler) FailTask(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")
+
+	// Verify the caller owns this task's workspace.
+	if _, ok := h.requireDaemonTaskAccess(w, r, taskID); !ok {
+		return
+	}
 
 	var req TaskFailRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -475,15 +788,22 @@ func (h *Handler) ReportTaskMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := h.Queries.GetAgentTask(r.Context(), parseUUID(taskID))
-	if err != nil {
-		writeError(w, http.StatusNotFound, "task not found")
+	// Verify the caller owns this task's workspace.
+	task, ok := h.requireDaemonTaskAccess(w, r, taskID)
+	if !ok {
 		return
 	}
 
 	workspaceID := ""
-	if issue, err := h.Queries.GetIssue(r.Context(), task.IssueID); err == nil {
-		workspaceID = uuidToString(issue.WorkspaceID)
+	if task.IssueID.Valid {
+		if issue, err := h.Queries.GetIssue(r.Context(), task.IssueID); err == nil {
+			workspaceID = uuidToString(issue.WorkspaceID)
+		}
+	}
+	if workspaceID == "" && task.ChatSessionID.Valid {
+		if cs, err := h.Queries.GetChatSession(r.Context(), task.ChatSessionID); err == nil {
+			workspaceID = uuidToString(cs.WorkspaceID)
+		}
 	}
 
 	for _, msg := range req.Messages {
@@ -527,13 +847,16 @@ func (h *Handler) ReportTaskMessages(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListTaskMessages(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")
 
-	task, err := h.Queries.GetAgentTask(r.Context(), parseUUID(taskID))
-	if err != nil {
-		writeError(w, http.StatusNotFound, "task not found")
+	// Verify the caller owns this task's workspace.
+	task, ok := h.requireDaemonTaskAccess(w, r, taskID)
+	if !ok {
 		return
 	}
 
-	var messages []db.TaskMessage
+	var (
+		messages []db.TaskMessage
+		err      error
+	)
 	if sinceStr := r.URL.Query().Get("since"); sinceStr != "" {
 		sinceSeq, parseErr := strconv.Atoi(sinceStr)
 		if parseErr != nil {
@@ -624,4 +947,101 @@ func (h *Handler) ListTasksByIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// ListTaskMessagesByUser returns task messages for a task.
+// Used by the frontend under regular user auth (not daemon auth).
+// Verifies the task belongs to the caller's workspace.
+func (h *Handler) ListTaskMessagesByUser(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskId")
+
+	task, err := h.Queries.GetAgentTask(r.Context(), parseUUID(taskID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "task not found")
+		return
+	}
+
+	// Verify the task belongs to the caller's workspace.
+	wsID := h.resolveTaskWorkspaceID(r, task)
+	if wsID == "" || wsID != middleware.WorkspaceIDFromContext(r.Context()) {
+		writeError(w, http.StatusNotFound, "task not found")
+		return
+	}
+
+	var (
+		messages []db.TaskMessage
+		queryErr error
+	)
+	if sinceStr := r.URL.Query().Get("since"); sinceStr != "" {
+		sinceSeq, parseErr := strconv.Atoi(sinceStr)
+		if parseErr != nil {
+			writeError(w, http.StatusBadRequest, "invalid since parameter")
+			return
+		}
+		messages, queryErr = h.Queries.ListTaskMessagesSince(r.Context(), db.ListTaskMessagesSinceParams{
+			TaskID: parseUUID(taskID),
+			Seq:    int32(sinceSeq),
+		})
+	} else {
+		messages, queryErr = h.Queries.ListTaskMessages(r.Context(), parseUUID(taskID))
+	}
+	if queryErr != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list task messages")
+		return
+	}
+
+	issueID := uuidToString(task.IssueID)
+
+	resp := make([]protocol.TaskMessagePayload, len(messages))
+	for i, m := range messages {
+		var input map[string]any
+		if m.Input != nil {
+			json.Unmarshal(m.Input, &input)
+		}
+		resp[i] = protocol.TaskMessagePayload{
+			TaskID:  taskID,
+			IssueID: issueID,
+			Seq:     int(m.Seq),
+			Type:    m.Type,
+			Tool:    m.Tool.String,
+			Content: m.Content.String,
+			Input:   input,
+			Output:  m.Output.String,
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// GetIssueUsage returns aggregated token usage for all tasks belonging to an issue.
+func (h *Handler) GetIssueUsage(w http.ResponseWriter, r *http.Request) {
+	issueID := chi.URLParam(r, "id")
+
+	row, err := h.Queries.GetIssueUsageSummary(r.Context(), parseUUID(issueID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get issue usage")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total_input_tokens":       row.TotalInputTokens,
+		"total_output_tokens":      row.TotalOutputTokens,
+		"total_cache_read_tokens":  row.TotalCacheReadTokens,
+		"total_cache_write_tokens": row.TotalCacheWriteTokens,
+		"task_count":               row.TaskCount,
+	})
+}
+
+// GetIssueGCCheck returns minimal issue info needed by the daemon GC loop.
+func (h *Handler) GetIssueGCCheck(w http.ResponseWriter, r *http.Request) {
+	issueID := chi.URLParam(r, "issueId")
+	issue, err := h.Queries.GetIssue(r.Context(), parseUUID(issueID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "issue not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":     issue.Status,
+		"updated_at": issue.UpdatedAt.Time,
+	})
 }

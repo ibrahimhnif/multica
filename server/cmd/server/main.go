@@ -14,11 +14,20 @@ import (
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/realtime"
+	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 func main() {
 	logger.Init()
+
+	// Warn about missing configuration
+	if os.Getenv("JWT_SECRET") == "" {
+		slog.Warn("JWT_SECRET is not set — using insecure default. Set JWT_SECRET for production use.")
+	}
+	if os.Getenv("RESEND_API_KEY") == "" {
+		slog.Warn("RESEND_API_KEY is not set — email verification codes will be printed to the log instead of emailed.")
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -65,9 +74,16 @@ func main() {
 		Handler: r,
 	}
 
-	// Start background sweeper to mark stale runtimes as offline.
+	// Start background workers.
 	sweepCtx, sweepCancel := context.WithCancel(context.Background())
+	autopilotCtx, autopilotCancel := context.WithCancel(context.Background())
+	taskSvc := service.NewTaskService(queries, hub, bus)
+	autopilotSvc := service.NewAutopilotService(queries, pool, bus, taskSvc)
+	registerAutopilotListeners(bus, autopilotSvc)
+
+	// Start background sweeper to mark stale runtimes as offline.
 	go runRuntimeSweeper(sweepCtx, queries, bus)
+	go runAutopilotScheduler(autopilotCtx, queries, autopilotSvc)
 
 	// Graceful shutdown
 	go func() {
@@ -84,6 +100,7 @@ func main() {
 
 	slog.Info("shutting down server")
 	sweepCancel()
+	autopilotCancel()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

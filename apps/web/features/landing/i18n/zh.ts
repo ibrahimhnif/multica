@@ -107,7 +107,7 @@ export const zh: LandingDict = {
         {
           title: "\u81ea\u52a8\u68c0\u6d4b\u4e0e\u5373\u63d2\u5373\u7528",
           description:
-            "Multica \u81ea\u52a8\u68c0\u6d4b Claude Code \u548c Codex \u7b49\u53ef\u7528 CLI\u3002\u8fde\u63a5\u4e00\u53f0\u673a\u5668\uff0c\u5373\u53ef\u5f00\u59cb\u5de5\u4f5c\u3002",
+            "Multica \u81ea\u52a8\u68c0\u6d4b Claude Code\u3001Codex\u3001OpenClaw \u548c OpenCode \u7b49\u53ef\u7528 CLI\u3002\u8fde\u63a5\u4e00\u53f0\u673a\u5668\uff0c\u5373\u53ef\u5f00\u59cb\u5de5\u4f5c\u3002",
         },
       ],
     },
@@ -126,7 +126,7 @@ export const zh: LandingDict = {
       {
         title: "\u5b89\u88c5 CLI \u5e76\u8fde\u63a5\u4f60\u7684\u673a\u5668",
         description:
-          "\u8fd0\u884c multica login \u8fdb\u884c\u8ba4\u8bc1\uff0c\u7136\u540e multica daemon start\u3002\u5b88\u62a4\u8fdb\u7a0b\u81ea\u52a8\u68c0\u6d4b\u4f60\u673a\u5668\u4e0a\u7684 Claude Code \u548c Codex\u2014\u2014\u63d2\u4e0a\u5c31\u7528\u3002",
+          "运行 multica setup 一键完成配置、认证和启动。守护进程自动检测你机器上的 Claude Code、Codex、OpenClaw 和 OpenCode——插上就用。",
       },
       {
         title: "\u521b\u5efa\u4f60\u7684\u7b2c\u4e00\u4e2a Agent",
@@ -181,7 +181,7 @@ export const zh: LandingDict = {
       {
         question: "Multica \u652f\u6301\u54ea\u4e9b\u7f16\u7801 Agent\uff1f",
         answer:
-          "Multica \u76ee\u524d\u5f00\u7bb1\u5373\u7528\u652f\u6301 Claude Code\u3001OpenAI Codex \u548c Google Gemini\u3002\u5b88\u62a4\u8fdb\u7a0b\u81ea\u52a8\u68c0\u6d4b\u4f60\u5b89\u88c5\u7684 CLI\u3002\u66f4\u591a\u540e\u7aef\u5728\u8def\u7ebf\u56fe\u4e0a\u2014\u2014\u800c\u4e14\u56e0\u4e3a\u5f00\u6e90\uff0c\u4f60\u4e5f\u53ef\u4ee5\u81ea\u5df1\u6dfb\u52a0\u3002",
+          "Multica \u76ee\u524d\u5f00\u7bb1\u5373\u7528\u652f\u6301 Claude Code\u3001Codex\u3001Gemini CLI\u3001OpenClaw\u3001OpenCode \u548c Copilot CLI\u3002\u5b88\u62a4\u8fdb\u7a0b\u81ea\u52a8\u68c0\u6d4b\u4f60\u5b89\u88c5\u7684 CLI\u3002\u56e0\u4e3a\u5f00\u6e90\uff0c\u4f60\u4e5f\u53ef\u4ee5\u81ea\u5df1\u6dfb\u52a0\u540e\u7aef\u3002",
       },
       {
         question: "\u9700\u8981\u81ea\u6258\u7ba1\u5417\uff0c\u8fd8\u662f\u6709\u4e91\u7248\u672c\uff1f",
@@ -190,7 +190,7 @@ export const zh: LandingDict = {
       },
       {
         question:
-          "\u8fd9\u548c\u76f4\u63a5\u7528 Claude Code\u3001Codex \u6216 Gemini \u6709\u4ec0\u4e48\u533a\u522b\uff1f",
+          "\u8fd9\u548c\u76f4\u63a5\u7528\u7f16\u7801 Agent \u6709\u4ec0\u4e48\u533a\u522b\uff1f",
         answer:
           "\u7f16\u7801 Agent \u64c5\u957f\u6267\u884c\u3002Multica \u6dfb\u52a0\u7684\u662f\u7ba1\u7406\u5c42\uff1a\u4efb\u52a1\u961f\u5217\u3001\u56e2\u961f\u534f\u4f5c\u3001\u6280\u80fd\u590d\u7528\u3001\u8fd0\u884c\u65f6\u76d1\u63a7\uff0c\u4ee5\u53ca\u6bcf\u4e2a Agent \u5728\u505a\u4ec0\u4e48\u7684\u7edf\u4e00\u89c6\u56fe\u3002\u628a\u5b83\u60f3\u8c61\u6210\u4f60\u7684 Agent \u7684\u9879\u76ee\u7ecf\u7406\u3002",
       },
@@ -230,7 +230,7 @@ export const zh: LandingDict = {
         links: [
           { label: "\u6587\u6863", href: githubUrl },
           { label: "API", href: githubUrl },
-          { label: "\u793e\u533a", href: githubUrl },
+          { label: "X (Twitter)", href: "https://x.com/MulticaAI" },
         ],
       },
       company: {
@@ -271,9 +271,206 @@ export const zh: LandingDict = {
   changelog: {
     title: "\u66f4\u65b0\u65e5\u5fd7",
     subtitle: "Multica \u7684\u6700\u65b0\u66f4\u65b0\u548c\u6539\u8fdb\u3002",
+    categories: {
+      features: "新功能",
+      improvements: "改进",
+      fixes: "问题修复",
+    },
     entries: [
       {
-        version: "0.1.9",
+        version: "0.2.0",
+        date: "2026-04-15",
+        title: "桌面应用、Autopilot 与邀请",
+        changes: [],
+        features: [
+          "macOS 桌面应用——原生 Electron 应用，支持标签页系统、内置 Daemon 管理、沉浸模式和自动更新",
+          "Autopilot——Agent 定时和触发式自动化任务",
+          "工作区邀请，支持邮件通知和专用接受页面",
+          "Agent 自定义 CLI 参数，支持高级运行时配置",
+          "聊天界面重设计，新增未读追踪和会话管理优化",
+          "创建 Agent 对话框显示运行时所有者和 Mine/All 筛选",
+        ],
+        improvements: [
+          "Inter 字体 + CJK 回退，中英文自动间距",
+          "侧边栏用户菜单改为整行弹出面板",
+          "WebSocket ping/pong 心跳检测断线连接",
+          "普通成员现在可以创建 Agent 和管理自己的 Skills",
+        ],
+        fixes: [
+          "Agent 在已参与的线程收到回复时正确触发",
+          "自部署：Docker 本地上传文件持久化，WebSocket URL 自动适配局域网",
+          "Cmd+K 最近 Issue 列表状态过期",
+        ],
+      },
+      {
+        version: "0.1.33",
+        date: "2026-04-14",
+        title: "Gemini CLI 与 Agent 环境变量",
+        changes: [],
+        features: [
+          "Google Gemini CLI 作为新的 Agent 运行时，支持实时日志流",
+          "Agent 自定义环境变量（router/proxy 模式），新增专用设置标签页",
+          "Issue 右键菜单新增「设置父 Issue」和「添加子 Issue」",
+          "CLI `--parent` 更新父 Issue，`--content-stdin` 管道输入评论内容",
+          "子 Issue 自动继承父级项目",
+        ],
+        improvements: [
+          "编辑器气泡菜单和链接预览重写",
+          "OpenClaw 后端 P0+P1 优化（多行 JSON、增量解析）",
+          "自部署 WebSocket URL 自动适配局域网访问",
+        ],
+        fixes: [
+          "S3 上传路径按工作区隔离（安全）",
+          "订阅和上传新增工作区成员身份校验（安全）",
+          "Issue 状态改为已取消时自动终止进行中的任务",
+          "Agent 进程 stdout 挂起导致任务卡住",
+          "Daemon 触发提示现在嵌入实际的触发评论内容",
+          "登录和仪表盘跳转稳定性改进",
+        ],
+      },
+      {
+        version: "0.1.28",
+        date: "2026-04-13",
+        title: "Windows 支持、认证与引导",
+        changes: [],
+        features: [
+          "Windows 支持——CLI 安装、Daemon 运行和发布构建",
+          "认证迁移至 HttpOnly Cookie，WebSocket 新增 Origin 白名单",
+          "新工作区全屏引导向导",
+          "Master Agent 聊天窗口可调整大小，会话历史体验优化",
+          "OpenCode、OpenClaw 和 Hermes 运行时 Token 用量日志扫描",
+        ],
+        fixes: [
+          "WebSocket 首条消息认证安全修复",
+          "新增 Content-Security-Policy 响应头",
+          "子 Issue 进度改为从数据库计算而非分页客户端缓存",
+        ],
+      },
+      {
+        version: "0.1.27",
+        date: "2026-04-12",
+        title: "一键安装、自部署与稳定性",
+        changes: [],
+        features: [
+          "一键安装与配置——`curl | bash` 安装 CLI，`--with-server` 完整自部署，`multica setup` 配置连接环境",
+          "自部署存储——无 S3 时本地文件存储回退，支持自定义 S3 端点（MinIO）",
+          "项目列表页支持行内编辑属性（优先级、状态、负责人）",
+        ],
+        improvements: [
+          "过期 Agent 任务自动清扫；执行卡片立即显示，无需等待首条消息",
+          "通过 CLI 上传的评论附件现在可在 UI 中显示",
+          "置顶项按用户隔离，修复侧边栏置顶操作",
+        ],
+        fixes: [
+          "Daemon API 路由和附件上传新增工作区所有权校验",
+          "Markdown 清洗器保留代码块不被 HTML 实体转义",
+          "Next.js 升级至 ^16.2.3 修复 CVE-2026-23869",
+          "OpenClaw 后端重写以匹配实际 CLI 接口",
+        ],
+      },
+      {
+        version: "0.1.24",
+        date: "2026-04-11",
+        title: "安全加固与通知",
+        changes: [],
+        features: [
+          "子 Issue 变更时通知父 Issue 的订阅者",
+          "CLI `--project` 筛选 Issue 列表",
+        ],
+        improvements: [
+          "Meta-skill 工作流改为委托 Agent Skills 而非硬编码逻辑",
+        ],
+        fixes: [
+          "Daemon API 路由新增工作区所有权校验",
+          "附件上传和查询新增工作区所有权验证",
+          "回复评论不再继承父级线程的 Agent 提及",
+          "Agent 创建评论缺少 workspace ID",
+          "自部署 Docker 构建问题修复（文件权限、CRLF 换行、缺失依赖）",
+        ],
+      },
+      {
+        version: "0.1.23",
+        date: "2026-04-11",
+        title: "置顶、Cmd+K 与项目增强",
+        changes: [],
+        features: [
+          "Issue 和项目置顶到侧边栏，支持拖拽排序",
+          "Cmd+K 命令面板——最近访问的 Issue、页面导航、项目搜索",
+          "项目详情侧边栏属性面板（替代原概览标签页）",
+          "Issues 列表新增项目筛选",
+          "项目列表显示完成进度",
+          "在项目页按 'C' 创建 Issue 时自动填充项目",
+          "指派人下拉按用户分配频率排序",
+        ],
+        fixes: [
+          "Markdown XSS 漏洞——评论渲染增加 rehype-sanitize 和服务端 bluemonday 清洗",
+          "项目看板 Issue 计数不正确",
+          "自部署 Docker 构建缺少 tsconfig 依赖",
+          "Cmd+K 需要按两次 ESC 才能关闭",
+        ],
+      },
+      {
+        version: "0.1.22",
+        date: "2026-04-10",
+        title: "自部署、ACP 与文档站",
+        changes: [],
+        features: [
+          "全栈 Docker Compose 一键自部署",
+          "通过 ACP 协议接入 Hermes Agent Provider",
+          "基于 Fumadocs 搭建文档站（快速入门、CLI 参考、Agent 指南）",
+          "侧边栏和收件箱移动端响应式布局",
+          "Issue 详情侧边栏展示 Token 用量",
+          "支持在 UI 中切换 Agent 运行时",
+          "'C' 快捷键快速创建 Issue",
+          "聊天会话历史面板，查看已归档对话",
+          "Daemon 新增 Claude Code 和 Codex 最低版本检查",
+          "官网新增 OpenClaw 和 OpenCode 展示",
+          "`make dev` 一键本地开发环境搭建",
+        ],
+        improvements: [
+          "侧边栏重新设计——个人/工作区分组、用户档案底栏、⌘K 搜索入口",
+          "搜索排序优化——大小写无关匹配、标识符搜索（MUL-123）、多词匹配",
+          "搜索结果关键词高亮",
+          "每日 Token 用量图表优化，Y 轴标签更清晰，新增分类 Tooltip",
+          "Master Agent 支持多行输入",
+          "统一选择器组件（状态、优先级、截止日期、项目、指派人）",
+          "工作区级别存储隔离，切换工作区时自动加载对应数据",
+          "自部署环境变量缺失时给出启动警告",
+        ],
+        fixes: [
+          "删除子 Issue 后父级列表未刷新",
+          "搜索索引兼容 RDS 上的 pg_bigm 1.2",
+          "创建 Agent 对话框错误显示「无可用运行时」",
+          "Claude stream-json 启动卡住",
+          "多个 Agent 无法同时为同一 Issue 排队任务",
+          "退出登录未清除工作区和查询缓存",
+          "编辑器为空时拖放区域过小",
+          "Skills 导入硬编码 main 分支导致 404",
+          "WebSocket 端点不支持 PAT 认证",
+          "所有 Agent 已归档时无法删除运行时",
+        ],
+      },
+      {
+        version: "0.1.21",
+        date: "2026-04-09",
+        title: "项目、搜索与 Monorepo",
+        changes: [
+          "项目实体全栈 CRUD——创建、编辑项目并按项目组织 Issue",
+          "创建 Issue 弹窗新增项目选择器，CLI 新增项目命令",
+          "基于 pg_bigm 的 Issue 全文搜索",
+          "Monorepo 拆包——共享 core、UI、views 三个包（Turborepo）",
+          "全屏 Agent 执行日志视图",
+          "编辑器支持拖拽上传文件并展示文件卡片",
+          "Issue 新增附件区域，支持图片网格和文件卡片展示",
+          "运行时支持所有者追踪、筛选、头像展示和点对点更新通知",
+          "列表视图行内显示子 Issue 进度",
+          "列表视图支持已完成 Issue 分页加载",
+          "Codex 会话日志扫描以报告 token 用量",
+          "修复守护进程 repo 缓存卡在初始快照的问题",
+        ],
+      },
+      {
+        version: "0.1.20",
         date: "2026-04-08",
         title: "子 Issue、TanStack Query 与用量追踪",
         changes: [
@@ -291,7 +488,7 @@ export const zh: LandingDict = {
         ],
       },
       {
-        version: "0.1.8",
+        version: "0.1.18",
         date: "2026-04-07",
         title: "OAuth、OpenClaw 与 Issue 加载优化",
         changes: [
@@ -306,7 +503,7 @@ export const zh: LandingDict = {
         ],
       },
       {
-        version: "0.1.7",
+        version: "0.1.17",
         date: "2026-04-05",
         title: "评论分页与 CLI 优化",
         changes: [
@@ -320,7 +517,7 @@ export const zh: LandingDict = {
         ],
       },
       {
-        version: "0.1.6",
+        version: "0.1.15",
         date: "2026-04-03",
         title: "编辑器重构与 Agent 生命周期",
         changes: [
@@ -336,7 +533,7 @@ export const zh: LandingDict = {
         ],
       },
       {
-        version: "0.1.5",
+        version: "0.1.14",
         date: "2026-04-02",
         title: "提及与权限",
         changes: [
@@ -353,7 +550,7 @@ export const zh: LandingDict = {
         ],
       },
       {
-        version: "0.1.4",
+        version: "0.1.13",
         date: "2026-04-01",
         title: "\u6211\u7684 Issue \u4e0e\u56fd\u9645\u5316",
         changes: [

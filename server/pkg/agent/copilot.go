@@ -5,13 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strings"
 	"time"
 )
 
 // copilotBackend implements Backend by spawning the Copilot CLI
-// with --output-format stream-json.
+// with `--output-format stream-json` and parsing its NDJSON event stream.
+// The Copilot CLI uses the same streaming format as Gemini CLI.
 type copilotBackend struct {
 	cfg Config
 }
@@ -31,16 +33,11 @@ func (b *copilotBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 	}
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 
-	args := []string{
-		"--prompt", prompt,
-		"--output-format", "stream-json",
-		"--approval-mode", "yolo",
-	}
-	if opts.Model != "" {
-		args = append(args, "--model", opts.Model)
-	}
+	args := buildCopilotArgs(prompt, opts, b.cfg.Logger)
 
 	cmd := exec.CommandContext(runCtx, execPath, args...)
+	b.cfg.Logger.Debug("agent command", "exec", execPath, "args", args)
+	cmd.WaitDelay = 10 * time.Second
 	if opts.Cwd != "" {
 		cmd.Dir = opts.Cwd
 	}
@@ -50,11 +47,6 @@ func (b *copilotBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("copilot stdout pipe: %w", err)
-	}
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("copilot stdin pipe: %w", err)
 	}
 	cmd.Stderr = newLogWriter(b.cfg.Logger, "[copilot:stderr] ")
 
@@ -68,11 +60,16 @@ func (b *copilotBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 	msgCh := make(chan Message, 256)
 	resCh := make(chan Result, 1)
 
+	// Close stdout when the context is cancelled so scanner.Scan() unblocks.
+	go func() {
+		<-runCtx.Done()
+		_ = stdout.Close()
+	}()
+
 	go func() {
 		defer cancel()
 		defer close(msgCh)
 		defer close(resCh)
-		defer stdin.Close()
 
 		startTime := time.Now()
 		var output strings.Builder
@@ -86,66 +83,64 @@ func (b *copilotBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
-			if line == "" || !strings.HasPrefix(line, "{") {
+			if line == "" {
 				continue
 			}
 
-			var msg geminiSDKMessage // Copilot CLI uses the same streaming format
-			if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			// Copilot CLI uses the same streaming format as Gemini CLI.
+			var evt geminiStreamEvent
+			if err := json.Unmarshal([]byte(line), &evt); err != nil {
 				continue
 			}
 
-			if msg.SessionID != "" {
-				sessionID = msg.SessionID
-			}
+			switch evt.Type {
+			case "init":
+				sessionID = evt.SessionID
+				trySend(msgCh, Message{Type: MessageStatus, Status: "running"})
 
-			switch msg.Type {
 			case "message":
-				if msg.Role == "assistant" && msg.Content != "" {
-					output.WriteString(msg.Content)
-					trySend(msgCh, Message{Type: MessageText, Content: msg.Content})
+				if evt.Role == "assistant" && evt.Content != "" {
+					output.WriteString(evt.Content)
+					trySend(msgCh, Message{Type: MessageText, Content: evt.Content})
 				}
-			case "thought":
-				if msg.Content != "" {
-					trySend(msgCh, Message{Type: MessageThinking, Content: msg.Content})
-				}
+
 			case "tool_use":
+				var params map[string]any
+				if evt.Parameters != nil {
+					_ = json.Unmarshal(evt.Parameters, &params)
+				}
 				trySend(msgCh, Message{
 					Type:   MessageToolUse,
-					Tool:   msg.ToolName,
-					CallID: msg.ToolID,
-					Input:  msg.Parameters,
+					Tool:   evt.ToolName,
+					CallID: evt.ToolID,
+					Input:  params,
 				})
+
 			case "tool_result":
 				trySend(msgCh, Message{
 					Type:   MessageToolResult,
-					CallID: msg.ToolID,
-					Output: msg.Output,
+					CallID: evt.ToolID,
+					Output: evt.Output,
 				})
-			case "status":
-				trySend(msgCh, Message{Type: MessageStatus, Status: msg.Status})
+
+			case "error":
+				trySend(msgCh, Message{
+					Type:    MessageError,
+					Content: evt.Message,
+				})
+
 			case "result":
-				if msg.Status == "error" || msg.Status == "fail" {
+				if evt.Status == "error" && evt.Error != nil {
 					finalStatus = "failed"
+					finalError = evt.Error.Message
 				}
-				// Use the final response if available (especially if streaming didn't happen)
-				if msg.Response != "" && output.Len() == 0 {
-					output.WriteString(msg.Response)
-				}
-				if msg.Stats != nil {
-					for modelName, stats := range msg.Stats.Models {
-						u := usage[modelName]
-						u.InputTokens += stats.InputTokens
-						u.OutputTokens += stats.OutputTokens
-						u.CacheReadTokens += stats.Cached
-						usage[modelName] = u
-					}
+				if evt.Stats != nil {
+					b.accumulateUsage(usage, evt.Stats)
 				}
 			}
 		}
 
-		// Wait for process exit
-		exitErr := cmd.Wait()
+		waitErr := cmd.Wait()
 		duration := time.Since(startTime)
 
 		if runCtx.Err() == context.DeadlineExceeded {
@@ -154,9 +149,9 @@ func (b *copilotBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 		} else if runCtx.Err() == context.Canceled {
 			finalStatus = "aborted"
 			finalError = "execution cancelled"
-		} else if exitErr != nil && finalStatus == "completed" {
+		} else if waitErr != nil && finalStatus == "completed" {
 			finalStatus = "failed"
-			finalError = fmt.Sprintf("copilot exited with error: %v", exitErr)
+			finalError = fmt.Sprintf("copilot exited with error: %v", waitErr)
 		}
 
 		b.cfg.Logger.Info("copilot finished", "pid", cmd.Process.Pid, "status", finalStatus, "duration", duration.Round(time.Millisecond).String())
@@ -172,4 +167,41 @@ func (b *copilotBackend) Execute(ctx context.Context, prompt string, opts ExecOp
 	}()
 
 	return &Session{Messages: msgCh, Result: resCh}, nil
+}
+
+// accumulateUsage extracts per-model token usage from Copilot's result stats.
+func (b *copilotBackend) accumulateUsage(usage map[string]TokenUsage, stats *geminiStreamStats) {
+	for model, m := range stats.Models {
+		u := usage[model]
+		u.InputTokens += int64(m.InputTokens)
+		u.OutputTokens += int64(m.OutputTokens)
+		u.CacheReadTokens += int64(m.Cached)
+		usage[model] = u
+	}
+}
+
+// ── Arg builder ──
+
+// copilotBlockedArgs are flags hardcoded by the daemon that must not be
+// overridden by user-configured custom_args.
+var copilotBlockedArgs = map[string]blockedArgMode{
+	"--prompt":        blockedWithValue,  // non-interactive prompt
+	"--output-format": blockedWithValue,  // stream-json output format
+	"--approval-mode": blockedWithValue,  // auto-approve tool use
+}
+
+func buildCopilotArgs(prompt string, opts ExecOptions, logger *slog.Logger) []string {
+	args := []string{
+		"--prompt", prompt,
+		"--output-format", "stream-json",
+		"--approval-mode", "yolo",
+	}
+	if opts.Model != "" {
+		args = append(args, "--model", opts.Model)
+	}
+	if opts.ResumeSessionID != "" {
+		args = append(args, "--resume", opts.ResumeSessionID)
+	}
+	args = append(args, filterCustomArgs(opts.CustomArgs, copilotBlockedArgs, logger)...)
+	return args
 }

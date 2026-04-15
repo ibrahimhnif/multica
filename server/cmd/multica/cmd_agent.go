@@ -114,6 +114,7 @@ func init() {
 	agentCreateCmd.Flags().String("instructions", "", "Agent instructions")
 	agentCreateCmd.Flags().String("runtime-id", "", "Runtime ID (required)")
 	agentCreateCmd.Flags().String("runtime-config", "", "Runtime config as JSON string")
+	agentCreateCmd.Flags().String("custom-args", "", "Custom CLI arguments as JSON array (e.g. '[\"--model\", \"o3\"]')")
 	agentCreateCmd.Flags().String("visibility", "private", "Visibility: private or workspace")
 	agentCreateCmd.Flags().Int32("max-concurrent-tasks", 6, "Maximum concurrent tasks")
 	agentCreateCmd.Flags().String("output", "json", "Output format: table or json")
@@ -124,6 +125,7 @@ func init() {
 	agentUpdateCmd.Flags().String("instructions", "", "New instructions")
 	agentUpdateCmd.Flags().String("runtime-id", "", "New runtime ID")
 	agentUpdateCmd.Flags().String("runtime-config", "", "New runtime config as JSON string")
+	agentUpdateCmd.Flags().String("custom-args", "", "New custom CLI arguments as JSON array (e.g. '[\"--model\", \"o3\"]')")
 	agentUpdateCmd.Flags().String("visibility", "", "New visibility: private or workspace")
 	agentUpdateCmd.Flags().String("status", "", "New status")
 	agentUpdateCmd.Flags().Int32("max-concurrent-tasks", 0, "New max concurrent tasks")
@@ -179,13 +181,12 @@ func resolveServerURL(cmd *cobra.Command) string {
 	}
 	profile := resolveProfile(cmd)
 	cfg, err := cli.LoadCLIConfigForProfile(profile)
-	if err != nil {
-		return "https://api.multica.ai"
-	}
-	if cfg.ServerURL != "" {
+	if err == nil && cfg.ServerURL != "" {
 		return normalizeAPIBaseURL(cfg.ServerURL)
 	}
-	return "https://api.multica.ai"
+	fmt.Fprintln(os.Stderr, "No server configured. Run 'multica setup' first.")
+	os.Exit(1)
+	return "" // unreachable
 }
 
 func normalizeAPIBaseURL(raw string) string {
@@ -206,6 +207,17 @@ func resolveWorkspaceID(cmd *cobra.Command) string {
 	return cfg.WorkspaceID
 }
 
+// requireWorkspaceID resolves the workspace ID and returns an error with
+// actionable instructions if it is empty (e.g. user has multiple workspaces
+// but no default configured).
+func requireWorkspaceID(cmd *cobra.Command) (string, error) {
+	id := resolveWorkspaceID(cmd)
+	if id == "" {
+		return "", fmt.Errorf("workspace_id is required: use --workspace-id flag, set MULTICA_WORKSPACE_ID env, or run 'multica config set workspace_id <id>'")
+	}
+	return id, nil
+}
+
 // ---------------------------------------------------------------------------
 // Agent commands
 // ---------------------------------------------------------------------------
@@ -215,15 +227,18 @@ func runAgentList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	if client.WorkspaceID == "" {
+		if _, err := requireWorkspaceID(cmd); err != nil {
+			return err
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	var agents []map[string]any
 	params := url.Values{}
-	if client.WorkspaceID != "" {
-		params.Set("workspace_id", client.WorkspaceID)
-	}
+	params.Set("workspace_id", client.WorkspaceID)
 	if v, _ := cmd.Flags().GetBool("include-archived"); v {
 		params.Set("include_archived", "true")
 	}
@@ -324,6 +339,14 @@ func runAgentCreate(cmd *cobra.Command, _ []string) error {
 		}
 		body["runtime_config"] = rc
 	}
+	if cmd.Flags().Changed("custom-args") {
+		v, _ := cmd.Flags().GetString("custom-args")
+		var ca []string
+		if err := json.Unmarshal([]byte(v), &ca); err != nil {
+			return fmt.Errorf("--custom-args must be a valid JSON array: %w", err)
+		}
+		body["custom_args"] = ca
+	}
 	if cmd.Flags().Changed("visibility") {
 		v, _ := cmd.Flags().GetString("visibility")
 		body["visibility"] = v
@@ -381,6 +404,14 @@ func runAgentUpdate(cmd *cobra.Command, args []string) error {
 		}
 		body["runtime_config"] = rc
 	}
+	if cmd.Flags().Changed("custom-args") {
+		v, _ := cmd.Flags().GetString("custom-args")
+		var ca []string
+		if err := json.Unmarshal([]byte(v), &ca); err != nil {
+			return fmt.Errorf("--custom-args must be a valid JSON array: %w", err)
+		}
+		body["custom_args"] = ca
+	}
 	if cmd.Flags().Changed("visibility") {
 		v, _ := cmd.Flags().GetString("visibility")
 		body["visibility"] = v
@@ -395,7 +426,7 @@ func runAgentUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(body) == 0 {
-		return fmt.Errorf("no fields to update; use --name, --description, --instructions, --runtime-id, --runtime-config, --visibility, --status, or --max-concurrent-tasks")
+		return fmt.Errorf("no fields to update; use --name, --description, --instructions, --runtime-id, --runtime-config, --custom-args, --visibility, --status, or --max-concurrent-tasks")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

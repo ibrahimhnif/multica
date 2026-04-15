@@ -268,13 +268,30 @@ func (h *Handler) CreateSkill(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, resp)
 }
 
+// canManageSkill checks whether the current user can update or delete a skill.
+// The skill creator or workspace owner/admin can manage any skill.
+func (h *Handler) canManageSkill(w http.ResponseWriter, r *http.Request, skill db.Skill) bool {
+	wsID := uuidToString(skill.WorkspaceID)
+	member, ok := h.requireWorkspaceRole(w, r, wsID, "skill not found", "owner", "admin", "member")
+	if !ok {
+		return false
+	}
+	isAdmin := roleAllowed(member.Role, "owner", "admin")
+	isSkillCreator := skill.CreatedBy.Valid && uuidToString(skill.CreatedBy) == requestUserID(r)
+	if !isAdmin && !isSkillCreator {
+		writeError(w, http.StatusForbidden, "only the skill creator can manage this skill")
+		return false
+	}
+	return true
+}
+
 func (h *Handler) UpdateSkill(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	skill, ok := h.loadSkillForUser(w, r, id)
 	if !ok {
 		return
 	}
-	if _, ok := h.requireWorkspaceRole(w, r, uuidToString(skill.WorkspaceID), "skill not found", "owner", "admin"); !ok {
+	if !h.canManageSkill(w, r, skill) {
 		return
 	}
 
@@ -376,7 +393,7 @@ func (h *Handler) DeleteSkill(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, ok := h.requireWorkspaceRole(w, r, uuidToString(skill.WorkspaceID), "skill not found", "owner", "admin"); !ok {
+	if !h.canManageSkill(w, r, skill) {
 		return
 	}
 
@@ -447,6 +464,31 @@ type githubContentEntry struct {
 	Path        string `json:"path"`
 	Type        string `json:"type"` // "file" or "dir"
 	DownloadURL string `json:"download_url"`
+}
+
+type githubRepoInfo struct {
+	DefaultBranch string `json:"default_branch"`
+}
+
+// fetchGitHubDefaultBranch returns the default branch of a GitHub repository.
+// Falls back to "main" if the API call fails.
+func fetchGitHubDefaultBranch(httpClient *http.Client, owner, repo string) string {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s",
+		url.PathEscape(owner), url.PathEscape(repo))
+	resp, err := httpClient.Get(apiURL)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return "main"
+	}
+	defer resp.Body.Close()
+
+	var info githubRepoInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil || info.DefaultBranch == "" {
+		return "main"
+	}
+	return info.DefaultBranch
 }
 
 // --- URL detection ---
@@ -621,13 +663,16 @@ func fetchFromSkillsSh(httpClient *http.Client, rawURL string) (*importedSkill, 
 
 	// Skills can be at different paths depending on the repo structure:
 	//   skills/{name}/SKILL.md          (most common)
+	//   .claude/skills/{name}/SKILL.md  (Claude Code native discovery)
 	//   plugin/skills/{name}/SKILL.md   (e.g. microsoft repos)
 	//   {name}/SKILL.md                 (skill at repo root level)
-	rawPrefix := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/main",
-		url.PathEscape(owner), url.PathEscape(repo))
+	defaultBranch := fetchGitHubDefaultBranch(httpClient, owner, repo)
+	rawPrefix := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s",
+		url.PathEscape(owner), url.PathEscape(repo), url.PathEscape(defaultBranch))
 
 	candidatePaths := []string{
 		"skills/" + skillName,
+		".claude/skills/" + skillName,
 		"plugin/skills/" + skillName,
 		skillName,
 	}
@@ -659,8 +704,8 @@ func fetchFromSkillsSh(httpClient *http.Client, rawURL string) (*importedSkill, 
 	}
 
 	// 2. List supporting files via GitHub API
-	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s",
-		url.PathEscape(owner), url.PathEscape(repo), skillDir)
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s",
+		url.PathEscape(owner), url.PathEscape(repo), skillDir, url.QueryEscape(defaultBranch))
 	dirResp, err := httpClient.Get(apiURL)
 	if err != nil || dirResp.StatusCode != http.StatusOK {
 		// Can't list files — return what we have (SKILL.md only)
@@ -885,7 +930,7 @@ func (h *Handler) UpsertSkillFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, ok := h.requireWorkspaceRole(w, r, uuidToString(skill.WorkspaceID), "skill not found", "owner", "admin"); !ok {
+	if !h.canManageSkill(w, r, skill) {
 		return
 	}
 
@@ -919,7 +964,7 @@ func (h *Handler) DeleteSkillFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, ok := h.requireWorkspaceRole(w, r, uuidToString(skill.WorkspaceID), "skill not found", "owner", "admin"); !ok {
+	if !h.canManageSkill(w, r, skill) {
 		return
 	}
 

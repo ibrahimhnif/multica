@@ -1,6 +1,7 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@multica/ui/lib/utils";
 
 export const githubUrl = "https://github.com/multica-ai/multica";
+export const twitterUrl = "https://x.com/MulticaAI";
 
 export function GitHubMark({ className }: { className?: string }) {
   return (
@@ -11,6 +12,19 @@ export function GitHubMark({ className }: { className?: string }) {
       fill="currentColor"
     >
       <path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2 .37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.65 7.65 0 0 1 8 4.84c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+    </svg>
+  );
+}
+
+export function XMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={className}
+      fill="currentColor"
+    >
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
     </svg>
   );
 }
@@ -61,7 +75,68 @@ export function CodexLogo({ className }: { className?: string }) {
   );
 }
 
-export function GeminiLogo({ className }: { className?: string }) {
+export function OpenClawLogo({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={className}
+      fill="none"
+    >
+      <g fill="#3a0a0d">
+        <rect x="1" y="5" width="1" height="3" />
+        <rect x="2" y="4" width="1" height="1" />
+        <rect x="2" y="8" width="1" height="1" />
+        <rect x="3" y="3" width="1" height="1" />
+        <rect x="3" y="9" width="1" height="1" />
+        <rect x="4" y="2" width="1" height="1" />
+        <rect x="4" y="10" width="1" height="1" />
+        <rect x="5" y="2" width="6" height="1" />
+        <rect x="11" y="2" width="1" height="1" />
+        <rect x="12" y="3" width="1" height="1" />
+        <rect x="12" y="9" width="1" height="1" />
+        <rect x="13" y="4" width="1" height="1" />
+        <rect x="13" y="8" width="1" height="1" />
+        <rect x="14" y="5" width="1" height="3" />
+        <rect x="5" y="11" width="6" height="1" />
+        <rect x="4" y="12" width="1" height="1" />
+        <rect x="11" y="12" width="1" height="1" />
+        <rect x="3" y="13" width="1" height="1" />
+        <rect x="12" y="13" width="1" height="1" />
+        <rect x="5" y="14" width="6" height="1" />
+      </g>
+      <g fill="#ff4f40">
+        <rect x="5" y="3" width="6" height="1" />
+        <rect x="4" y="4" width="8" height="1" />
+        <rect x="3" y="5" width="10" height="1" />
+        <rect x="3" y="6" width="10" height="1" />
+        <rect x="3" y="7" width="10" height="1" />
+        <rect x="4" y="8" width="8" height="1" />
+        <rect x="5" y="9" width="6" height="1" />
+        <rect x="5" y="12" width="6" height="1" />
+        <rect x="6" y="13" width="4" height="1" />
+      </g>
+      <g fill="#ff775f">
+        <rect x="1" y="6" width="2" height="1" />
+        <rect x="2" y="5" width="1" height="1" />
+        <rect x="2" y="7" width="1" height="1" />
+        <rect x="13" y="6" width="2" height="1" />
+        <rect x="13" y="5" width="1" height="1" />
+        <rect x="13" y="7" width="1" height="1" />
+      </g>
+      <g fill="#081016">
+        <rect x="6" y="5" width="1" height="1" />
+        <rect x="9" y="5" width="1" height="1" />
+      </g>
+      <g fill="#f5fbff">
+        <rect x="6" y="4" width="1" height="1" />
+        <rect x="9" y="4" width="1" height="1" />
+      </g>
+    </svg>
+  );
+}
+
+export function GeminiCliLogo({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -69,7 +144,21 @@ export function GeminiLogo({ className }: { className?: string }) {
       className={className}
       fill="currentColor"
     >
-      <path d="M12 0C12 6.627 6.627 12 0 12C6.627 12 12 17.373 12 24C12 17.373 17.373 12 24 12C17.373 12 12 6.627 12 0Z" />
+      <path d="M12 0C12 0 12 8 8 12C12 12 12 12 12 24C12 24 12 16 16 12C12 12 12 12 12 0Z" />
+    </svg>
+  );
+}
+
+export function OpenCodeLogo({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={className}
+      fill="none"
+    >
+      <path d="M18 18H6V6H18V18Z" fill="#CFCECD" />
+      <path d="M18 3H6V18H18V3ZM24 24H0V0H24V24Z" fill="#656363" />
     </svg>
   );
 }

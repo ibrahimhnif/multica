@@ -7,8 +7,7 @@ The `multica` CLI connects your local machine to Multica. It handles authenticat
 ### Homebrew (macOS/Linux)
 
 ```bash
-brew tap multica-ai/tap
-brew install multica
+brew install multica-ai/tap/multica
 ```
 
 ### Build from Source
@@ -23,12 +22,28 @@ cp server/bin/multica /usr/local/bin/multica
 ### Update
 
 ```bash
+brew upgrade multica-ai/tap/multica
+```
+
+For install script or manual installs, use:
+
+```bash
 multica update
 ```
 
-This auto-detects your installation method (Homebrew or manual) and upgrades accordingly.
+`multica update` auto-detects your installation method and upgrades accordingly.
 
 ## Quick Start
+
+```bash
+# One-command setup: configure, authenticate, and start the daemon
+multica setup
+
+# For self-hosted (local) deployments:
+multica setup self-host
+```
+
+Or step by step:
 
 ```bash
 # 1. Authenticate (opens browser for login)
@@ -125,6 +140,9 @@ The daemon auto-detects these AI CLIs on your PATH:
 |-----|---------|-------------|
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `claude` | Anthropic's coding agent |
 | [Codex](https://github.com/openai/codex) | `codex` | OpenAI's coding agent |
+| OpenCode | `opencode` | Open-source coding agent |
+| OpenClaw | `openclaw` | Open-source coding agent |
+| Hermes | `hermes` | Nous Research coding agent |
 
 You need at least one installed. The daemon registers each detected CLI as an available runtime.
 
@@ -159,24 +177,38 @@ Agent-specific overrides:
 | `MULTICA_CLAUDE_MODEL` | Override the Claude model used |
 | `MULTICA_CODEX_PATH` | Custom path to the `codex` binary |
 | `MULTICA_CODEX_MODEL` | Override the Codex model used |
+| `MULTICA_OPENCODE_PATH` | Custom path to the `opencode` binary |
+| `MULTICA_OPENCODE_MODEL` | Override the OpenCode model used |
+| `MULTICA_OPENCLAW_PATH` | Custom path to the `openclaw` binary |
+| `MULTICA_OPENCLAW_MODEL` | Override the OpenClaw model used |
+| `MULTICA_HERMES_PATH` | Custom path to the `hermes` binary |
+| `MULTICA_HERMES_MODEL` | Override the Hermes model used |
 
 ### Self-Hosted Server
 
-When connecting to a self-hosted Multica instance, point the CLI to your server before logging in:
+When connecting to a self-hosted Multica instance, the easiest approach is:
 
 ```bash
-export MULTICA_APP_URL=https://app.example.com
-export MULTICA_SERVER_URL=wss://api.example.com/ws
+# One command — configures for localhost, authenticates, starts daemon
+multica setup self-host
+
+# Or for on-premise with custom domains:
+multica setup self-host --server-url https://api.example.com --app-url https://app.example.com
+```
+
+Or configure manually:
+
+```bash
+# Set URLs individually
+multica config set server_url http://localhost:8080
+multica config set app_url http://localhost:3000
+
+# For production with TLS:
+# multica config set server_url https://api.example.com
+# multica config set app_url https://app.example.com
 
 multica login
 multica daemon start
-```
-
-Or set them persistently:
-
-```bash
-multica config set app_url https://app.example.com
-multica config set server_url wss://api.example.com/ws
 ```
 
 ### Profiles
@@ -184,9 +216,11 @@ multica config set server_url wss://api.example.com/ws
 Profiles let you run multiple daemons on the same machine — for example, one for production and one for a staging server.
 
 ```bash
-# Start a daemon for the staging server
-multica --profile staging login
-multica --profile staging daemon start
+# Set up a staging profile
+multica setup self-host --profile staging --server-url https://api-staging.example.com --app-url https://staging.example.com
+
+# Start its daemon
+multica daemon start --profile staging
 
 # Default profile runs separately
 multica daemon start
@@ -306,6 +340,24 @@ multica issue run-messages <task-id> --since 42 --output json
 
 The `runs` command shows all past and current executions for an issue, including running tasks. The `run-messages` command shows the detailed message log (tool calls, thinking, text, errors) for a single run. Use `--since` for efficient polling of in-progress runs.
 
+## Setup
+
+```bash
+# One-command setup for Multica Cloud: configure, authenticate, and start the daemon
+multica setup
+
+# For local self-hosted deployments
+multica setup self-host
+
+# Custom ports
+multica setup self-host --port 9090 --frontend-port 4000
+
+# On-premise with custom domains
+multica setup self-host --server-url https://api.example.com --app-url https://app.example.com
+```
+
+`multica setup` configures the CLI, opens your browser for authentication, and starts the daemon — all in one step. Use `multica setup self-host` to connect to a self-hosted server instead of Multica Cloud.
+
 ## Configuration
 
 ### View Config
@@ -319,7 +371,7 @@ Shows config file path, server URL, app URL, and default workspace.
 ### Set Values
 
 ```bash
-multica config set server_url wss://api.example.com/ws
+multica config set server_url https://api.example.com
 multica config set app_url https://app.example.com
 multica config set workspace_id <workspace-id>
 ```
